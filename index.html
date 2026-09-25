@@ -189,6 +189,13 @@
   .btn-flag{background:rgba(239,68,68,0.15); color:#ff9c9c; border:1px solid rgba(239,68,68,0.3);}
   .btn-flag.active{background:var(--danger); color:#fff;}
 
+  .missing-icon{
+    color:var(--warning);
+    margin-inline-start:6px;
+    cursor:help;
+    font-size:13px;
+  }
+
   .empty-state{
     text-align:center;
     padding:40px 20px;
@@ -356,6 +363,31 @@
   .mon-table .lvl-tag.baladi{background:rgba(61,139,255,0.15); color:#8fbcff;}
   .mon-table .lvl-tag.wilaya{background:rgba(245,158,11,0.15); color:#f5c264;}
   .no-results-msg{padding:24px; text-align:center; color:var(--muted); font-size:13px;}
+
+  /* ---------- المتشابهون ---------- */
+  .dup-group{
+    border:1px solid rgba(245,158,11,0.35);
+    background:rgba(245,158,11,0.06);
+    border-radius:12px;
+    margin-bottom:14px;
+    overflow:hidden;
+  }
+  .dup-group-header{
+    padding:10px 16px;
+    font-weight:700;
+    font-size:13.5px;
+    color:#f5c264;
+    background:rgba(245,158,11,0.12);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .dup-tag{
+    font-size:11px; font-weight:700; padding:2px 10px; border-radius:20px;
+    background:rgba(245,158,11,0.2); color:#f5c264;
+  }
 </style>
 </head>
 <body>
@@ -384,6 +416,7 @@
     <button class="tab-btn active" data-tab="register">تسجيل المؤطرين</button>
     <button class="tab-btn" data-tab="distribute">توزيع المراكز</button>
     <button class="tab-btn" data-tab="monitor">لوحة المتابعة</button>
+    <button class="tab-btn" data-tab="duplicates">🧬 التسجيلات المتشابهة <span class="counter" id="dupTabCounter" style="margin-inline-start:4px; padding:2px 8px;"><b>0</b></span></button>
   </div>
 
   <div class="tab-section active" id="tab-register">
@@ -403,8 +436,12 @@
           <input type="text" id="fLastName" required placeholder="مثال: بن علي">
         </div>
         <div class="field">
-          <label>تاريخ الميلاد <span class="req">*</span></label>
-          <input type="date" id="fBirth" required>
+          <label>اسم الأب <span class="opt">(اختياري)</span></label>
+          <input type="text" id="fFatherName" placeholder="مثال: محمد">
+        </div>
+        <div class="field">
+          <label>تاريخ الميلاد <span class="opt">(اختياري)</span></label>
+          <input type="date" id="fBirth" lang="en">
         </div>
         <div class="field">
           <label>الرقم الانتخابي <span class="opt">(اختياري)</span></label>
@@ -507,6 +544,14 @@
       <h2>توزيع مؤطر <span class="badge">مرحلة التوزيع</span></h2>
 
       <div class="grid">
+        <div class="field" style="grid-column: span 2;">
+          <label>تصفية القائمة</label>
+          <select id="dMoatirFilter">
+            <option value="">كل المؤطرين</option>
+            <option value="unassigned">غير موزعين فقط</option>
+            <option value="assigned">موزعين (لتغيير المنصب)</option>
+          </select>
+        </div>
         <div class="field" style="grid-column: span 2;">
           <label>اختر المؤطر <span class="req">*</span></label>
           <select id="dMoatir">
@@ -613,6 +658,20 @@
     </div>
   </div>
 
+  <!-- ============ قسم التسجيلات المتشابهة ============ -->
+  <div class="tab-section" id="tab-duplicates">
+    <div class="card">
+      <h2>
+        التسجيلات المتشابهة
+        <span class="badge" id="dupCountBadge">0 حالة</span>
+      </h2>
+      <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
+        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب، أو نفس الرقم الانتخابي، أو نفس تاريخ الميلاد — لاكتشاف التسجيلات المكررة بسهولة.
+      </p>
+      <div id="duplicatesContent"></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Modal التعديل -->
@@ -629,15 +688,19 @@
         <input type="text" id="eLastName">
       </div>
       <div class="field">
-        <label>تاريخ الميلاد</label>
-        <input type="date" id="eBirth">
+        <label>اسم الأب <span class="opt">(اختياري)</span></label>
+        <input type="text" id="eFatherName">
+      </div>
+      <div class="field">
+        <label>تاريخ الميلاد <span class="opt">(اختياري)</span></label>
+        <input type="date" id="eBirth" lang="en">
       </div>
       <div class="field">
         <label>الرقم الانتخابي <span class="opt">(اختياري)</span></label>
         <input type="text" id="eElectoralNum">
       </div>
       <div class="field">
-        <label>رقم الهاتف</label>
+        <label>رقم الهاتف <span class="opt">(اختياري)</span></label>
         <input type="tel" id="ePhone">
       </div>
       <div class="field">
@@ -698,13 +761,13 @@
    إعدادات Firebase — Cloud Firestore
    ============================================================ */
 const firebaseConfig = {
-  apiKey: "AIzaSyC5uMBASwpnSPUJKM7P73B7FabMqocfX4c",
-  authDomain: "anie-590dc.firebaseapp.com",
-  projectId: "anie-590dc",
-  storageBucket: "anie-590dc.firebasestorage.app",
-  messagingSenderId: "504939166738",
-  appId: "1:504939166738:web:573564aa434e9bd0396ccb",
-  measurementId: "G-S108LG3G9T"
+  apiKey: "AIzaSyBNdeqW9mheWay22wGY5Kq84fXGksjHaUg",
+  authDomain: "inti5ab.firebaseapp.com",
+  projectId: "inti5ab",
+  storageBucket: "inti5ab.firebasestorage.app",
+  messagingSenderId: "145027777087",
+  appId: "1:145027777087:web:301e1441bcbc424c616e8a",
+  measurementId: "G-WBBLFBD534"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -797,7 +860,7 @@ collectionRef.limit(1).onSnapshot(
     if(!firstSnapshotReceived){
       firstSnapshotReceived = true;
       document.getElementById("connDot").className = "conn-dot on";
-      document.getElementById("connText").textContent = "متصل بقاعدة البيانات (Firestore)";
+      document.getElementById("connText").textContent = "";
     }
   },
   (err) => {
@@ -818,10 +881,12 @@ moatirineRef.on("value", (snapshot) => {
   try{
     if(document.getElementById("tab-distribute").classList.contains("active")) refreshDistributeSelects();
     if(document.getElementById("tab-monitor").classList.contains("active")) renderMonitor();
+    if(document.getElementById("tab-duplicates").classList.contains("active")) renderDuplicates();
   }catch(err){
     console.error("خطأ في تحديث التبويبات:", err);
     showPageError("خطأ أثناء تحديث التبويبات: " + err.message);
   }
+  updateDuplicatesBadge();
 });
 
 function showPageError(msg){
@@ -832,25 +897,73 @@ function showPageError(msg){
   }
 }
 
+/* ============================================================
+   كشف التكرار (نفس الاسم واللقب، أو نفس الرقم الانتخابي)
+   ============================================================ */
+function findDuplicateMatches(name, lastName, electoralNum, excludeId){
+  const fullKey = (name + " " + lastName).trim().toLowerCase();
+  const matches = [];
+  Object.keys(allEntries).forEach(id => {
+    if(id === excludeId) return;
+    const e = allEntries[id];
+    const eFullKey = (e.name + " " + e.lastName).trim().toLowerCase();
+    const reasons = [];
+    if(fullKey && eFullKey === fullKey) reasons.push("نفس الاسم واللقب");
+    if(electoralNum && e.electoralNum && e.electoralNum === electoralNum) reasons.push("نفس الرقم الانتخابي");
+    if(reasons.length) matches.push({ id, e, reasons });
+  });
+  return matches;
+}
+
+function confirmIfDuplicates(name, lastName, electoralNum, excludeId){
+  const matches = findDuplicateMatches(name, lastName, electoralNum, excludeId);
+  if(matches.length === 0) return true; // لا يوجد تكرار — تابع طبيعياً
+  const details = matches.map(m => `• ${m.e.name} ${m.e.lastName} — ${m.reasons.join(" و ")}`).join("\n");
+  const msg = "⚠️ تنبيه: يوجد مؤطر (أو أكثر) مسجّل مسبقاً بنفس البيانات:\n\n" + details +
+              "\n\nهل تريد المتابعة والحفظ رغم ذلك؟";
+  return confirm(msg);
+}
+
+/* ============================================================
+   بيانات ناقصة — للأيقونة التحذيرية في الجدول
+   ============================================================ */
+function getMissingFields(e){
+  const missing = [];
+  if(!e.birth) missing.push("تاريخ الميلاد");
+  if(!e.electoralNum) missing.push("الرقم الانتخابي");
+  if(!e.phone) missing.push("رقم الهاتف");
+  return missing;
+}
+
 /* ---------------- إرسال البيانات ---------------- */
 document.getElementById("frmMoatir").addEventListener("submit", function(e){
   e.preventDefault();
 
   const name = document.getElementById("fName").value.trim();
   const lastName = document.getElementById("fLastName").value.trim();
+  const fatherName = document.getElementById("fFatherName").value.trim();
   const birth = document.getElementById("fBirth").value;
   const electoralNum = document.getElementById("fElectoralNum").value.trim();
   const phone = document.getElementById("fPhone").value.trim();
   const educationLevel = document.getElementById("fEducation").value;
   const notes = document.getElementById("fNotes").value.trim();
 
-  if(!name || !lastName || !birth || !educationLevel){
-    showStatus("يرجى تعبئة جميع الحقول الإلزامية.", false);
+  // الحقول الإلزامية الوحيدة الآن: الاسم، اللقب، المستوى التعليمي
+  if(!name || !lastName || !educationLevel){
+    showStatus("يرجى تعبئة الحقول الإلزامية: الاسم، اللقب، والمستوى التعليمي.", false);
+    return;
+  }
+
+  // فحص التكرار قبل الحفظ
+  if(!confirmIfDuplicates(name, lastName, electoralNum, null)){
+    showStatus("تم إلغاء الحفظ.", false);
     return;
   }
 
   const entry = {
-    name, lastName, birth,
+    name, lastName,
+    fatherName: fatherName || null,
+    birth: birth || null,
     electoralNum: electoralNum || null,
     phone: phone || null,
     educationLevel,
@@ -877,7 +990,9 @@ document.getElementById("frmMoatir").addEventListener("submit", function(e){
       document.getElementById("frmMoatir").reset();
     })
     .catch((err) => {
+      console.error("خطأ أثناء الحفظ في Firestore:", err);
       showStatus("حدث خطأ أثناء الحفظ: " + err.message, false);
+      showPageError("فشل حفظ المؤطر: " + err.message);
     })
     .finally(() => {
       btn.disabled = false;
@@ -965,10 +1080,15 @@ function renderTable(){
       ? `<span class="flag-note">🚩 ${escapeHtml(e.issueType||"مشكلة")}</span>`
       : "";
 
+    const missing = getMissingFields(e);
+    const missingIcon = missing.length
+      ? `<span class="missing-icon" title="بيانات ناقصة: ${escapeHtml(missing.join('، '))}">⚠️</span>`
+      : "";
+
     const tr = document.createElement("tr");
     if(e.flagged) tr.className = "flagged-row";
     tr.innerHTML = `
-      <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}${flagNote}</td>
+      <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}${missingIcon}${flagNote}</td>
       <td>${e.birth ? formatDate(e.birth) : "—"}</td>
       <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
       <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
@@ -978,6 +1098,7 @@ function renderTable(){
       <td>
         <div class="row-actions">
           <button class="btn-secondary btn-small" onclick="openEdit('${id}')">تعديل</button>
+          <button class="btn-secondary btn-small" onclick="goToDistribute('${id}')">${currentPos ? 'تغيير المنصب' : 'توزيع'}</button>
           <button class="btn-flag btn-small ${e.flagged ? 'active' : ''}" onclick="openFlag('${id}')">🚩</button>
           <button class="btn-danger btn-small" onclick="openDelete('${id}')">حذف</button>
         </div>
@@ -1012,6 +1133,7 @@ function openEdit(id){
   editTargetId = id;
   document.getElementById("eName").value = e.name || "";
   document.getElementById("eLastName").value = e.lastName || "";
+  document.getElementById("eFatherName").value = e.fatherName || "";
   document.getElementById("eBirth").value = e.birth || "";
   document.getElementById("eElectoralNum").value = e.electoralNum || "";
   document.getElementById("ePhone").value = e.phone || "";
@@ -1027,11 +1149,27 @@ document.getElementById("btnCancelEdit").addEventListener("click", () => {
 
 document.getElementById("btnSaveEdit").addEventListener("click", () => {
   if(!editTargetId) return;
+
+  const name = document.getElementById("eName").value.trim();
+  const lastName = document.getElementById("eLastName").value.trim();
+  const electoralNum = document.getElementById("eElectoralNum").value.trim() || null;
+
+  if(!name || !lastName){
+    alert("الاسم واللقب إلزاميان.");
+    return;
+  }
+
+  // فحص التكرار عند التعديل أيضاً (باستثناء المؤطر نفسه)
+  if(!confirmIfDuplicates(name, lastName, electoralNum, editTargetId)){
+    return;
+  }
+
   const updated = {
-    name: document.getElementById("eName").value.trim(),
-    lastName: document.getElementById("eLastName").value.trim(),
-    birth: document.getElementById("eBirth").value,
-    electoralNum: document.getElementById("eElectoralNum").value.trim() || null,
+    name,
+    lastName,
+    fatherName: document.getElementById("eFatherName").value.trim() || null,
+    birth: document.getElementById("eBirth").value || null,
+    electoralNum,
     phone: document.getElementById("ePhone").value.trim() || null,
     educationLevel: document.getElementById("eEducation").value,
     notes: document.getElementById("eNotes").value.trim() || null
@@ -1117,6 +1255,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     try{
       if(btn.dataset.tab === "distribute") refreshDistributeSelects();
       if(btn.dataset.tab === "monitor") renderMonitor();
+      if(btn.dataset.tab === "duplicates") renderDuplicates();
     }catch(err){
       console.error("خطأ عند فتح التبويب:", err);
       showPageError("خطأ أثناء فتح هذا التبويب: " + err.message);
@@ -1196,9 +1335,18 @@ document.getElementById("dLevel").addEventListener("change", function(){
 /* تعبئة قائمة المؤطرين المسجّلين في تبويب التوزيع */
 function refreshDistributeSelects(){
   const sel = document.getElementById("dMoatir");
+  const filterEl = document.getElementById("dMoatirFilter");
+  const filterVal = filterEl ? filterEl.value : "";
   const currentVal = sel.value;
   sel.innerHTML = '<option value="" disabled selected>اختر مؤطراً...</option>';
-  const ids = Object.keys(allEntries).sort((a,b) => (allEntries[a].createdAt||0) - (allEntries[b].createdAt||0));
+
+  let ids = Object.keys(allEntries).sort((a,b) => (allEntries[a].createdAt||0) - (allEntries[b].createdAt||0));
+  if(filterVal === "unassigned"){
+    ids = ids.filter(id => !allEntries[id].assignLevel);
+  } else if(filterVal === "assigned"){
+    ids = ids.filter(id => !!allEntries[id].assignLevel);
+  }
+
   ids.forEach(id => {
     const e = allEntries[id];
     const opt = document.createElement("option");
@@ -1212,8 +1360,23 @@ function refreshDistributeSelects(){
     opt.textContent = `${e.name} ${e.lastName}${assignedTag}`;
     sel.appendChild(opt);
   });
-  if(currentVal && allEntries[currentVal]) sel.value = currentVal;
+
+  if(currentVal && allEntries[currentVal] && ids.includes(currentVal)) sel.value = currentVal;
   checkExistingAssignment();
+}
+
+document.getElementById("dMoatirFilter").addEventListener("change", refreshDistributeSelects);
+
+/* الانتقال إلى تبويب التوزيع مع تحديد مؤطر معيّن مسبقاً (لتوزيعه أو تغيير منصبه) */
+function goToDistribute(id){
+  document.querySelector('.tab-btn[data-tab="distribute"]').click();
+  setTimeout(() => {
+    const filterEl = document.getElementById("dMoatirFilter");
+    if(filterEl) filterEl.value = ""; // إظهار كل المؤطرين حتى لا يُستبعد المختار بسبب الفلترة
+    refreshDistributeSelects();
+    document.getElementById("dMoatir").value = id;
+    checkExistingAssignment();
+  }, 50);
 }
 
 /* عرض توزيع المؤطر الحالي (إن وجد) عند اختياره */
@@ -1507,6 +1670,83 @@ function renderMonitor(){
 }
 
 /* ============================================================
+   التسجيلات المتشابهة
+   ============================================================ */
+function computeDuplicateGroups(){
+  const byName = {};
+  const byElectoral = {};
+  const byBirth = {};
+
+  Object.keys(allEntries).forEach(id => {
+    const e = allEntries[id];
+    const nameKey = (e.name + " " + e.lastName).trim().toLowerCase();
+    if(nameKey){ (byName[nameKey] = byName[nameKey] || []).push(id); }
+    if(e.electoralNum){ (byElectoral[e.electoralNum] = byElectoral[e.electoralNum] || []).push(id); }
+    if(e.birth){ (byBirth[e.birth] = byBirth[e.birth] || []).push(id); }
+  });
+
+  const groups = [];
+  Object.keys(byName).forEach(k => {
+    if(byName[k].length > 1) groups.push({ reason: "نفس الاسم واللقب", ids: byName[k] });
+  });
+  Object.keys(byElectoral).forEach(k => {
+    if(byElectoral[k].length > 1) groups.push({ reason: "نفس الرقم الانتخابي", ids: byElectoral[k] });
+  });
+  Object.keys(byBirth).forEach(k => {
+    if(byBirth[k].length > 1) groups.push({ reason: "نفس تاريخ الميلاد", ids: byBirth[k] });
+  });
+
+  return groups;
+}
+
+function updateDuplicatesBadge(){
+  const groups = computeDuplicateGroups();
+  const badge = document.getElementById("dupTabCounter");
+  if(badge) badge.innerHTML = "<b>" + groups.length + "</b>";
+}
+
+function renderDuplicates(){
+  const container = document.getElementById("duplicatesContent");
+  const groups = computeDuplicateGroups();
+
+  document.getElementById("dupCountBadge").textContent = groups.length + " حالة";
+  updateDuplicatesBadge();
+
+  if(groups.length === 0){
+    container.innerHTML = `<div class="empty-state"><div class="icon">✅</div><div>لا توجد أي تسجيلات متشابهة حالياً</div></div>`;
+    return;
+  }
+
+  container.innerHTML = groups.map(g => {
+    const rows = g.ids.map(id => {
+      const e = allEntries[id];
+      return `<tr>
+        <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}</td>
+        <td>${e.birth ? formatDate(e.birth) : "—"}</td>
+        <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
+        <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
+        <td>
+          <button class="btn-secondary btn-small" onclick="document.querySelector('.tab-btn[data-tab=register]').click(); setTimeout(()=>openEdit('${id}'), 50);">تعديل</button>
+        </td>
+      </tr>`;
+    }).join("");
+
+    return `<div class="dup-group">
+      <div class="dup-group-header">
+        <span>${g.ids.length} مؤطرين متطابقين</span>
+        <span class="dup-tag">${g.reason}</span>
+      </div>
+      <div class="table-wrap" style="border:none; border-radius:0;">
+        <table>
+          <thead><tr><th>الاسم واللقب</th><th>تاريخ الميلاد</th><th>الرقم الانتخابي</th><th>الهاتف</th><th>إجراء</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+/* ============================================================
    تصدير البيانات إلى Excel
    ============================================================ */
 function buildExportRows(onlyAssigned){
@@ -1524,6 +1764,7 @@ function buildExportRows(onlyAssigned){
     rows.push({
       "الاسم": e.name || "",
       "اللقب": e.lastName || "",
+      "اسم الأب": e.fatherName || "",
       "تاريخ الميلاد": e.birth ? formatDate(e.birth) : "",
       "الرقم الانتخابي": e.electoralNum || "",
       "رقم الهاتف": e.phone || "",
@@ -1549,7 +1790,7 @@ function exportExcel(onlyAssigned){
   }
   const ws = XLSX.utils.json_to_sheet(rows);
   ws["!cols"] = [
-    {wch:14},{wch:14},{wch:14},{wch:16},{wch:14},{wch:14},
+    {wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:14},{wch:14},
     {wch:22},{wch:26},{wch:12},{wch:12},{wch:14},{wch:12},{wch:20},{wch:26}
   ];
   const wb = XLSX.utils.book_new();
