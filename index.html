@@ -202,11 +202,23 @@
   .btn-flag.active{background:var(--danger); color:#fff;}
 
   .missing-icon{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px;
+    border-radius:50%;
+    background:rgba(245,158,11,0.18);
     color:var(--warning);
     margin-inline-start:6px;
     cursor:help;
-    font-size:13px;
+    font-size:11px;
+    font-weight:800;
+    vertical-align:middle;
   }
+  .clickable-name{
+    cursor:pointer;
+    text-decoration:underline dotted;
+    text-underline-offset:3px;
+  }
+  .clickable-name:hover{color:var(--accent-2);}
 
   .empty-state{
     text-align:center;
@@ -451,6 +463,38 @@
     font-size:11px; font-weight:700; padding:2px 10px; border-radius:20px;
     background:rgba(245,158,11,0.2); color:#f5c264;
   }
+
+  /* ---------- استيراد Excel ---------- */
+  .import-box{
+    border:1px dashed var(--border);
+    border-radius:12px;
+    padding:14px 16px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    background:rgba(61,139,255,0.04);
+  }
+  .import-box input[type="file"]{
+    color:var(--muted);
+    font-size:13px;
+    max-width:280px;
+  }
+  .import-summary{
+    font-size:13px;
+    color:var(--muted);
+    line-height:1.8;
+  }
+  .import-summary b{color:var(--text);}
+
+  /* ---------- تحديد للحذف في التسجيلات المتشابهة ---------- */
+  .dup-select-row{background:rgba(239,68,68,0.1) !important;}
+  .dup-select-cell{width:34px; text-align:center;}
+  .dup-group-footer{
+    display:flex; justify-content:flex-end; align-items:center; gap:10px;
+    padding:10px 16px; border-top:1px solid rgba(245,158,11,0.25);
+  }
+  .dup-group-footer .dup-sel-count{font-size:12.5px; color:var(--muted);}
 </style>
 </head>
 <body>
@@ -552,12 +596,8 @@
           <input type="text" id="fFullName" required placeholder="مثال: أحمد بن علي">
         </div>
         <div class="field">
-          <label>اسم الأب <span class="opt">(اختياري)</span></label>
-          <input type="text" id="fFatherName" placeholder="مثال: محمد">
-        </div>
-        <div class="field">
           <label>تاريخ الميلاد <span class="opt">(اختياري)</span></label>
-          <input type="date" id="fBirth" lang="en">
+          <input type="text" id="fBirth" inputmode="numeric" placeholder="مثال: 02/02/2006" maxlength="10">
         </div>
         <div class="field">
           <label>الرقم الانتخابي <span class="opt">(اختياري)</span></label>
@@ -568,9 +608,9 @@
           <input type="tel" id="fPhone" placeholder="مثال: 0555123456">
         </div>
         <div class="field">
-          <label>المستوى التعليمي <span class="req">*</span></label>
-          <select id="fEducation" required>
-            <option value="" disabled selected>اختر المستوى التعليمي</option>
+          <label>المستوى التعليمي <span class="opt">(اختياري)</span></label>
+          <select id="fEducation">
+            <option value="" selected>اختر المستوى التعليمي</option>
             <option value="بدون مستوى">بدون مستوى</option>
             <option value="إبتدائي">إبتدائي</option>
             <option value="متوسط">متوسط</option>
@@ -597,9 +637,10 @@
 
   <!-- قائمة المؤطرين المسجلين -->
   <div class="card">
-    <h2>
-      قائمة المؤطرين
-      <span class="counter" id="totalCounter"><b>0</b> مسجّل</span>
+    <h2 style="justify-content:space-between; flex-wrap:wrap;">
+      <span>قائمة المؤطرين
+      <span class="counter" id="totalCounter"><b>0</b> مسجّل</span></span>
+      <button type="button" class="btn-danger btn-small" id="btnBulkDelete" disabled>🗑 حذف المحدّدين (<span id="bulkDeleteCount">0</span>)</button>
     </h2>
 
     <div class="toolbar">
@@ -633,6 +674,7 @@
       <table>
         <thead>
           <tr>
+            <th style="width:34px;"><input type="checkbox" id="selectAllCheckbox" title="تحديد الكل"></th>
             <th>الاسم واللقب</th>
             <th>تاريخ الميلاد</th>
             <th>الرقم الانتخابي</th>
@@ -749,13 +791,45 @@
 
   <!-- ============ قسم لوحة المتابعة ============ -->
   <div class="tab-section" id="tab-monitor">
+
+    <!-- استيراد من ملف Excel -->
+    <div class="card">
+      <h2>استيراد من ملف Excel <span class="badge">رفع دفعة مؤطرين</span></h2>
+      <p style="color:var(--muted); font-size:13px; margin:-6px 0 14px;">
+        اختر ملف Excel (بنفس تنسيق ملف التصدير: الاسم واللقب، تاريخ الميلاد، الرقم الانتخابي، رقم الهاتف، المستوى التعليمي، ملاحظات...). كل سطر يحمل اسماً ولقباً وتاريخ ميلاد مطابقين تماماً لمؤطر مسجَّل مسبقاً سيتم <b>تحديث</b> بياناته بدل إضافته من جديد، وأي سطر جديد سيُحفظ كمؤطر جديد مباشرة في قاعدة البيانات.
+      </p>
+      <div class="import-box">
+        <input type="file" id="importFile" accept=".xlsx,.xls,.csv">
+        <button type="button" class="btn-primary btn-small" id="btnImportExcel">استيراد وحفظ في القاعدة</button>
+        <span class="import-summary" id="importSummary"></span>
+      </div>
+      <div class="status-msg" id="importStatus"></div>
+    </div>
+
+    <div class="card">
+      <h2>تصدير مخصّص <span class="badge">حسب المركز / النوع</span></h2>
+      <p style="color:var(--muted); font-size:13px; margin:-6px 0 14px;">
+        اختاري مركزاً معيّناً و/أو نوع المكتب (بلدي أو ولائي) قبل الضغط على زر التصدير. سيكون الترتيب داخل كل ملف: <b>رئيس المركز ثم طاقم المركز</b>، ثم المكاتب مرتّبة برقمها، وداخل كل مكتب حسب الترتيب المعمول به (رئيس مكتب، نائب رئيس مكتب، كاتب، مساعد أول، مساعد ثاني، إضافي أول، إضافي ثاني).
+      </p>
+      <div class="toolbar">
+        <select id="exportFilterCenter">
+          <option value="">كل المراكز</option>
+        </select>
+        <select id="exportFilterType">
+          <option value="">بلدي + ولائي (كل الأنواع)</option>
+          <option value="بلدي">بلدي فقط</option>
+          <option value="ولائي">ولائي فقط</option>
+        </select>
+      </div>
+      <div class="actions" style="margin-top:0;">
+        <button type="button" class="btn-secondary btn-small" id="btnExportAll">⬇ تصدير الكل (Excel)</button>
+        <button type="button" class="btn-secondary btn-small" id="btnExportAssigned">⬇ تصدير الموزَّعين فقط</button>
+      </div>
+    </div>
+
     <div class="card">
       <h2 style="justify-content:space-between; flex-wrap:wrap;">
         <span>لوحة متابعة المراكز والمكاتب <span class="badge">تفاصيل كاملة لكل مؤطر</span></span>
-        <span style="display:flex; gap:8px;">
-          <button type="button" class="btn-secondary btn-small" id="btnExportAll">⬇ تصدير الكل (Excel)</button>
-          <button type="button" class="btn-secondary btn-small" id="btnExportAssigned">⬇ تصدير الموزَّعين فقط</button>
-        </span>
       </h2>
 
       <div class="toolbar">
@@ -782,7 +856,7 @@
         <span class="badge" id="dupCountBadge">0 حالة</span>
       </h2>
       <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
-        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب، أو نفس الرقم الانتخابي، أو نفس تاريخ الميلاد — لاكتشاف التسجيلات المكررة بسهولة.
+        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب، أو نفس الرقم الانتخابي، أو نفس تاريخ الميلاد — لاكتشاف التسجيلات المكررة بسهولة. حدّد المؤطر (أو المؤطرين) المكرر داخل كل مجموعة بالضغط على 🚩 ثم احذفه مباشرة.
       </p>
       <div id="duplicatesContent"></div>
     </div>
@@ -800,12 +874,8 @@
         <input type="text" id="eFullName">
       </div>
       <div class="field">
-        <label>اسم الأب <span class="opt">(اختياري)</span></label>
-        <input type="text" id="eFatherName">
-      </div>
-      <div class="field">
         <label>تاريخ الميلاد <span class="opt">(اختياري)</span></label>
-        <input type="date" id="eBirth" lang="en">
+        <input type="text" id="eBirth" inputmode="numeric" placeholder="مثال: 02/02/2006" maxlength="10">
       </div>
       <div class="field">
         <label>الرقم الانتخابي <span class="opt">(اختياري)</span></label>
@@ -864,6 +934,18 @@
     <div class="actions">
       <button class="btn-danger" id="btnConfirmDelete">حذف نهائي</button>
       <button class="btn-secondary" id="btnCancelDelete">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal تأكيد حذف مجموعة متشابهة -->
+<div class="modal-overlay" id="dupDeleteModal">
+  <div class="modal">
+    <h3>تأكيد حذف المحدّدين</h3>
+    <p id="dupDeleteMsg">هل أنت متأكد من حذف المؤطرين المحدّدين؟ لا يمكن التراجع عن هذا الإجراء.</p>
+    <div class="actions">
+      <button class="btn-danger" id="btnConfirmDupDelete">حذف نهائي</button>
+      <button class="btn-secondary" id="btnCancelDupDelete">إلغاء</button>
     </div>
   </div>
 </div>
@@ -964,6 +1046,10 @@ let allEntries = {}; // { id: {...} }
 let deleteTargetId = null;
 let editTargetId = null;
 let flagTargetId = null;
+let selectedIds = new Set(); // لتحديد المؤطرين المراد حذفهم دفعة واحدة
+
+/* تحديد المؤطرين المكررين المراد حذفهم من تبويب "التسجيلات المتشابهة" */
+let dupSelectedIds = new Set();
 
 /* ---------------- حالة الاتصال ---------------- */
 let firstSnapshotReceived = false;
@@ -1081,6 +1167,42 @@ function getMissingFields(e){
   return missing;
 }
 
+/* ============================================================
+   تنسيق تاريخ الميلاد تلقائياً أثناء الكتابة أو اللصق
+   يقبل: 02/02/2006 أو 02.02.2006 أو 02022006 ... يعيد تنسيقها كلها
+   إلى يوم/شهر/سنة أثناء الكتابة (تعمل نفس الآلية مع اللصق أيضاً)
+   ============================================================ */
+function formatBirthInputLive(el){
+  let digits = el.value.replace(/\D/g, "").slice(0, 8); // أقصى 8 أرقام: يوم(2) شهر(2) سنة(4)
+  let formatted = digits;
+  if(digits.length > 4){
+    formatted = digits.slice(0,2) + "/" + digits.slice(2,4) + "/" + digits.slice(4);
+  } else if(digits.length > 2){
+    formatted = digits.slice(0,2) + "/" + digits.slice(2);
+  }
+  el.value = formatted;
+}
+
+function attachBirthAutoFormat(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener("input", function(){ formatBirthInputLive(this); });
+}
+attachBirthAutoFormat("fBirth");
+attachBirthAutoFormat("eBirth");
+
+/* تحويل نص "يوم/شهر/سنة" المعروض في الحقل إلى صيغة ISO لتخزينه في قاعدة البيانات */
+function birthDisplayToISO(text){
+  const match = (text || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(!match) return null;
+  const day = match[1].padStart(2, "0");
+  const month = match[2].padStart(2, "0");
+  const year = match[3];
+  if(Number(month) < 1 || Number(month) > 12) return null;
+  if(Number(day) < 1 || Number(day) > 31) return null;
+  return `${year}-${month}-${day}`;
+}
+
 /* ---------------- إرسال البيانات ---------------- */
 document.getElementById("frmMoatir").addEventListener("submit", function(e){
   e.preventDefault();
@@ -1089,16 +1211,15 @@ document.getElementById("frmMoatir").addEventListener("submit", function(e){
   const nameParts = fullName.split(/\s+/).filter(Boolean);
   const name = nameParts[0] || "";
   const lastName = nameParts.slice(1).join(" ");
-  const fatherName = document.getElementById("fFatherName").value.trim();
-  const birth = document.getElementById("fBirth").value;
+  const birth = birthDisplayToISO(document.getElementById("fBirth").value);
   const electoralNum = document.getElementById("fElectoralNum").value.trim();
   const phone = document.getElementById("fPhone").value.trim();
   const educationLevel = document.getElementById("fEducation").value;
   const notes = document.getElementById("fNotes").value.trim();
 
-  // الحقول الإلزامية الوحيدة الآن: الاسم واللقب معاً، والمستوى التعليمي
-  if(!fullName || !educationLevel){
-    showStatus("يرجى تعبئة الحقول الإلزامية: الاسم واللقب، والمستوى التعليمي.", false);
+  // الحقل الإلزامي الوحيد الآن: الاسم واللقب
+  if(!fullName){
+    showStatus("يرجى تعبئة الاسم واللقب.", false);
     return;
   }
 
@@ -1110,11 +1231,10 @@ document.getElementById("frmMoatir").addEventListener("submit", function(e){
 
   const entry = {
     name, lastName,
-    fatherName: fatherName || null,
     birth: birth || null,
     electoralNum: electoralNum || null,
     phone: phone || null,
-    educationLevel,
+    educationLevel: educationLevel || null,
     notes: notes || null,
     assignLevel: null,     // "center" أو "office" أو null
     center: null,
@@ -1164,6 +1284,201 @@ function hideStatus(){
   el.className = "status-msg";
 }
 
+/* ============================================================
+   استيراد المؤطرين من ملف Excel/CSV وحفظهم مباشرة في القاعدة
+   ============================================================ */
+function normalizeHeaderKey(k){
+  return String(k || "").trim();
+}
+
+// خريطة أسماء الأعمدة المحتملة (كما تُصدَّر) إلى حقول قاعدة البيانات
+const IMPORT_HEADER_MAP = {
+  "الاسم": "name",
+  "اللقب": "lastName",
+  "الاسم واللقب": "fullName",
+  "تاريخ الميلاد": "birth",
+  "الرقم الانتخابي": "electoralNum",
+  "رقم الهاتف": "phone",
+  "الهاتف": "phone",
+  "المستوى التعليمي": "educationLevel",
+  "ملاحظات": "notes"
+};
+
+function parseImportedBirth(val){
+  if(val === undefined || val === null || val === "") return null;
+  // خلية تاريخ رقمية من Excel (serial date)
+  if(typeof val === "number"){
+    const d = XLSX.SSF ? XLSX.SSF.parse_date_code(val) : null;
+    if(d) return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;
+  }
+  const text = String(val).trim();
+  // صيغة يوم/شهر/سنة
+  let m = text.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$/);
+  if(m){
+    return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  }
+  // صيغة سنة-شهر-يوم (ISO جاهزة)
+  m = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(m){
+    return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  }
+  return null;
+}
+
+/* البحث عن مؤطر مسجَّل مسبقاً بنفس الاسم واللقب وتاريخ الميلاد بالضبط */
+function findMatchingExistingId(entry){
+  const nameKey = (entry.name + " " + entry.lastName).trim().toLowerCase();
+  if(!nameKey || !entry.birth) return null; // بدون تاريخ ميلاد لا يمكن التأكد من التطابق
+  const foundId = Object.keys(allEntries).find(id => {
+    const e = allEntries[id];
+    const eKey = ((e.name||"") + " " + (e.lastName||"")).trim().toLowerCase();
+    return eKey === nameKey && e.birth === entry.birth;
+  });
+  return foundId || null;
+}
+
+function rowToEntry(row){
+  const mapped = {};
+  Object.keys(row).forEach(k => {
+    const key = IMPORT_HEADER_MAP[normalizeHeaderKey(k)];
+    if(key) mapped[key] = row[k];
+  });
+
+  let name = mapped.name ? String(mapped.name).trim() : "";
+  let lastName = mapped.lastName ? String(mapped.lastName).trim() : "";
+  if(!name && mapped.fullName){
+    const parts = String(mapped.fullName).trim().split(/\s+/).filter(Boolean);
+    name = parts[0] || "";
+    lastName = parts.slice(1).join(" ");
+  }
+  if(!name && !lastName) return null; // سطر بلا اسم — يُتجاهل
+
+  return {
+    name, lastName,
+    birth: parseImportedBirth(mapped.birth),
+    electoralNum: mapped.electoralNum ? String(mapped.electoralNum).trim() : null,
+    phone: mapped.phone ? String(mapped.phone).trim() : null,
+    educationLevel: mapped.educationLevel ? String(mapped.educationLevel).trim() : null,
+    notes: mapped.notes ? String(mapped.notes).trim() : null,
+    assignLevel: null,
+    center: null,
+    centerPosition: null,
+    officeNumber: null,
+    officeType: null,
+    officePosition: null,
+    flagged: false,
+    issueType: null,
+    issueReason: null,
+    createdAt: Date.now()
+  };
+}
+
+function showImportStatus(msg, ok){
+  const el = document.getElementById("importStatus");
+  el.textContent = msg;
+  el.className = "status-msg show " + (ok ? "ok" : "err");
+}
+
+document.getElementById("btnImportExcel").addEventListener("click", () => {
+  const fileInput = document.getElementById("importFile");
+  const file = fileInput.files && fileInput.files[0];
+  const summaryEl = document.getElementById("importSummary");
+
+  if(!file){
+    showImportStatus("يرجى اختيار ملف Excel أولاً.", false);
+    return;
+  }
+
+  const btn = document.getElementById("btnImportExcel");
+  btn.disabled = true;
+  btn.textContent = "جارٍ القراءة...";
+  summaryEl.textContent = "";
+
+  const reader = new FileReader();
+  reader.onload = function(evt){
+    try{
+      const data = new Uint8Array(evt.target.result);
+      const wb = XLSX.read(data, { type: "array", cellDates: false });
+      const firstSheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+      if(rows.length === 0){
+        showImportStatus("الملف لا يحتوي على أي بيانات.", false);
+        btn.disabled = false;
+        btn.textContent = "استيراد وحفظ في القاعدة";
+        return;
+      }
+
+      const entries = rows.map(rowToEntry).filter(Boolean);
+      const skipped = rows.length - entries.length;
+
+      if(entries.length === 0){
+        showImportStatus("لم يتم العثور على أي سطر يحتوي على اسم صالح.", false);
+        btn.disabled = false;
+        btn.textContent = "استيراد وحفظ في القاعدة";
+        return;
+      }
+
+      btn.textContent = "جارٍ الحفظ في القاعدة (0/" + entries.length + ")...";
+
+      let addedCount = 0;
+      let updatedCount = 0;
+      let failedCount = 0;
+      let processed = 0;
+
+      const savePromises = entries.map(entry => {
+        const matchId = findMatchingExistingId(entry);
+        let op;
+        if(matchId){
+          const existing = allEntries[matchId];
+          const updatePayload = {
+            electoralNum: entry.electoralNum || existing.electoralNum || null,
+            phone: entry.phone || existing.phone || null,
+            educationLevel: entry.educationLevel || existing.educationLevel || null,
+            notes: entry.notes || existing.notes || null
+          };
+          op = moatirineRef.child(matchId).update(updatePayload).then(() => { updatedCount++; });
+        } else {
+          op = moatirineRef.push(entry).then(() => { addedCount++; });
+        }
+        return op
+          .then(() => {
+            processed++;
+            btn.textContent = "جارٍ الحفظ في القاعدة (" + processed + "/" + entries.length + ")...";
+          })
+          .catch((err) => {
+            failedCount++;
+            console.error("فشل حفظ سطر أثناء الاستيراد:", err);
+          });
+      });
+
+      Promise.all(savePromises).then(() => {
+        let msg = "تم الاستيراد: " + addedCount + " مؤطر جديد" + (updatedCount ? "، وتحديث " + updatedCount + " مؤطر موجود مسبقاً" : "") + " ✅";
+        if(skipped > 0) msg += " — تم تجاهل " + skipped + " سطر بدون اسم.";
+        if(failedCount > 0) msg += " — فشل حفظ " + failedCount + " سطر.";
+        showImportStatus(msg, failedCount === 0);
+        summaryEl.innerHTML = "آخر استيراد: <b>" + addedCount + "</b> جديد" + (updatedCount ? "، <b>" + updatedCount + "</b> محدَّث" : "") + (skipped ? "، <b>" + skipped + "</b> متجاهل" : "") + (failedCount ? "، <b>" + failedCount + "</b> فشل" : "");
+        fileInput.value = "";
+        btn.disabled = false;
+        btn.textContent = "استيراد وحفظ في القاعدة";
+      });
+
+    }catch(err){
+      console.error("خطأ أثناء قراءة ملف الاستيراد:", err);
+      showImportStatus("تعذّرت قراءة الملف: " + err.message, false);
+      btn.disabled = false;
+      btn.textContent = "استيراد وحفظ في القاعدة";
+    }
+  };
+  reader.onerror = function(){
+    showImportStatus("تعذّرت قراءة الملف من الجهاز.", false);
+    btn.disabled = false;
+    btn.textContent = "استيراد وحفظ في القاعدة";
+  };
+  reader.readAsArrayBuffer(file);
+});
+
 /* ---------------- عرض الجدول ---------------- */
 function renderTable(){
   const search = document.getElementById("searchBox").value.trim().toLowerCase();
@@ -1177,6 +1492,7 @@ function renderTable(){
   document.getElementById("totalCounter").innerHTML = "<b>" + ids.length + "</b> مسجّل";
 
   let visibleCount = 0;
+  const visibleIds = [];
 
   // ترتيب حسب المنصب أولاً (إن وُجد)، ثم تاريخ الإضافة
   const sortedIds = ids.sort((a, b) => {
@@ -1211,6 +1527,7 @@ function renderTable(){
     }
 
     visibleCount++;
+    visibleIds.push(id);
     const color = POSITION_COLORS[currentPos] || "#3d8bff";
 
     let distributionTxt = '<span style="color:var(--muted);">غير موزّع</span>';
@@ -1230,13 +1547,16 @@ function renderTable(){
 
     const missing = getMissingFields(e);
     const missingIcon = missing.length
-      ? `<span class="missing-icon" title="بيانات ناقصة: ${escapeHtml(missing.join('، '))}">⚠️</span>`
+      ? `<span class="missing-icon" title="بيانات ناقصة: ${escapeHtml(missing.join('، '))}">❓</span>`
       : "";
 
     const tr = document.createElement("tr");
     if(e.flagged) tr.className = "flagged-row";
     tr.innerHTML = `
-      <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}${missingIcon}${flagNote}</td>
+      <td><input type="checkbox" class="rowCheckbox" data-id="${id}" ${selectedIds.has(id) ? "checked" : ""}></td>
+      <td>
+        <span class="clickable-name" title="اضغط للتعديل" onclick="openEdit('${id}')">${escapeHtml(e.name)} ${escapeHtml(e.lastName)}</span>${missingIcon}${flagNote}
+      </td>
       <td>${e.birth ? formatDate(e.birth) : "—"}</td>
       <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
       <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
@@ -1245,7 +1565,6 @@ function renderTable(){
       <td>${e.notes ? escapeHtml(e.notes) : "—"}</td>
       <td>
         <div class="row-actions">
-          <button class="btn-secondary btn-small" onclick="openEdit('${id}')">تعديل</button>
           <button class="btn-secondary btn-small" onclick="goToDistribute('${id}')">${currentPos ? 'تغيير المنصب' : 'توزيع'}</button>
           <button class="btn-flag btn-small ${e.flagged ? 'active' : ''}" onclick="openFlag('${id}')">🚩</button>
           <button class="btn-danger btn-small" onclick="openDelete('${id}')">حذف</button>
@@ -1256,7 +1575,76 @@ function renderTable(){
   });
 
   document.getElementById("emptyState").style.display = visibleCount === 0 ? "block" : "none";
+
+  // إزالة أي تحديد لمؤطرين لم يعودوا موجودين (تم حذفهم من مكان آخر مثلاً)
+  Array.from(selectedIds).forEach(id => { if(!allEntries[id]) selectedIds.delete(id); });
+
+  // ربط أحداث تحديد كل سطر
+  tbody.querySelectorAll(".rowCheckbox").forEach(cb => {
+    cb.addEventListener("change", function(){
+      const id = this.dataset.id;
+      if(this.checked) selectedIds.add(id); else selectedIds.delete(id);
+      updateBulkDeleteUI();
+    });
+  });
+
+  updateSelectAllCheckboxState(visibleIds);
+  updateBulkDeleteUI();
 }
+
+/* ============================================================
+   تحديد جماعي وحذف دفعة واحدة
+   ============================================================ */
+function updateBulkDeleteUI(){
+  const btn = document.getElementById("btnBulkDelete");
+  const countEl = document.getElementById("bulkDeleteCount");
+  if(!btn || !countEl) return;
+  countEl.textContent = selectedIds.size;
+  btn.disabled = selectedIds.size === 0;
+}
+
+function updateSelectAllCheckboxState(visibleIds){
+  const selectAll = document.getElementById("selectAllCheckbox");
+  if(!selectAll) return;
+  if(visibleIds.length === 0){
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+    return;
+  }
+  const selectedVisibleCount = visibleIds.filter(id => selectedIds.has(id)).length;
+  selectAll.checked = selectedVisibleCount === visibleIds.length;
+  selectAll.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+}
+
+document.getElementById("selectAllCheckbox").addEventListener("change", function(){
+  const visibleIds = Array.from(document.querySelectorAll("#tblBody .rowCheckbox")).map(cb => cb.dataset.id);
+  if(this.checked){
+    visibleIds.forEach(id => selectedIds.add(id));
+  } else {
+    visibleIds.forEach(id => selectedIds.delete(id));
+  }
+  renderTable();
+});
+
+document.getElementById("btnBulkDelete").addEventListener("click", () => {
+  if(selectedIds.size === 0) return;
+  const count = selectedIds.size;
+  const ok = confirm("هل أنت متأكد من حذف " + count + " مؤطر دفعة واحدة؟ لا يمكن التراجع عن هذا الإجراء.");
+  if(!ok) return;
+
+  const btn = document.getElementById("btnBulkDelete");
+  btn.disabled = true;
+  btn.textContent = "جارٍ الحذف...";
+
+  const ids = Array.from(selectedIds);
+  Promise.all(ids.map(id => moatirineRef.child(id).remove().catch(err => {
+    console.error("فشل حذف مؤطر:", id, err);
+  }))).then(() => {
+    selectedIds.clear();
+    updateBulkDeleteUI();
+    btn.innerHTML = '🗑 حذف المحدّدين (<span id="bulkDeleteCount">0</span>)';
+  });
+});
 
 function formatDate(d){
   const parts = d.split("-");
@@ -1280,8 +1668,7 @@ function openEdit(id){
   if(!e) return;
   editTargetId = id;
   document.getElementById("eFullName").value = ((e.name || "") + " " + (e.lastName || "")).trim();
-  document.getElementById("eFatherName").value = e.fatherName || "";
-  document.getElementById("eBirth").value = e.birth || "";
+  document.getElementById("eBirth").value = e.birth ? formatDate(e.birth) : "";
   document.getElementById("eElectoralNum").value = e.electoralNum || "";
   document.getElementById("ePhone").value = e.phone || "";
   document.getElementById("eEducation").value = e.educationLevel || "بدون مستوى";
@@ -1316,8 +1703,7 @@ document.getElementById("btnSaveEdit").addEventListener("click", () => {
   const updated = {
     name,
     lastName,
-    fatherName: document.getElementById("eFatherName").value.trim() || null,
-    birth: document.getElementById("eBirth").value || null,
+    birth: birthDisplayToISO(document.getElementById("eBirth").value),
     electoralNum,
     phone: document.getElementById("ePhone").value.trim() || null,
     educationLevel: document.getElementById("eEducation").value,
@@ -1428,6 +1814,7 @@ const OFFICE_TYPES = ["بلدي", "ولائي"];
 (function fillCenterSelect(){
   const sel = document.getElementById("dCenter");
   const monSel = document.getElementById("monFilterCenter");
+  const expSel = document.getElementById("exportFilterCenter");
   Object.keys(CENTERS).forEach(code => {
     const opt = document.createElement("option");
     opt.value = code;
@@ -1436,6 +1823,9 @@ const OFFICE_TYPES = ["بلدي", "ولائي"];
 
     const monOpt = opt.cloneNode(true);
     monSel.appendChild(monOpt);
+
+    const expOpt = opt.cloneNode(true);
+    expSel.appendChild(expOpt);
   });
 })();
 
@@ -1854,6 +2244,65 @@ function updateDuplicatesBadge(){
   if(badge) badge.innerHTML = "<b>" + groups.length + "</b>";
 }
 
+/* تحديد/إلغاء تحديد مؤطر مكرر من داخل تبويب التسجيلات المتشابهة */
+function toggleDupSelect(id, checked){
+  if(checked) dupSelectedIds.add(id); else dupSelectedIds.delete(id);
+  updateDupGroupCounters();
+}
+
+/* تحديث عدّاد "المحدّدين" وتفعيل/تعطيل أزرار الحذف داخل كل مجموعة */
+function updateDupGroupCounters(){
+  document.querySelectorAll(".dup-group").forEach(groupEl => {
+    const ids = (groupEl.dataset.ids || "").split(",").filter(Boolean);
+    const selectedInGroup = ids.filter(id => dupSelectedIds.has(id));
+    const countEl = groupEl.querySelector(".dup-sel-count");
+    const btnEl = groupEl.querySelector(".dup-group-delete-btn");
+    if(countEl) countEl.textContent = selectedInGroup.length + " محدّد";
+    if(btnEl) btnEl.disabled = selectedInGroup.length === 0;
+  });
+}
+
+let dupDeleteTargetIds = [];
+
+function openDupDeleteConfirm(ids){
+  if(!ids || ids.length === 0) return;
+  dupDeleteTargetIds = ids;
+  const names = ids.map(id => {
+    const e = allEntries[id];
+    return e ? (e.name + " " + e.lastName) : "";
+  }).filter(Boolean).join("، ");
+  document.getElementById("dupDeleteMsg").textContent =
+    "هل أنت متأكد من حذف " + ids.length + " مؤطر (" + names + ")؟ لا يمكن التراجع عن هذا الإجراء.";
+  document.getElementById("dupDeleteModal").classList.add("show");
+}
+
+document.getElementById("btnCancelDupDelete").addEventListener("click", () => {
+  document.getElementById("dupDeleteModal").classList.remove("show");
+  dupDeleteTargetIds = [];
+});
+
+document.getElementById("btnConfirmDupDelete").addEventListener("click", () => {
+  if(dupDeleteTargetIds.length === 0) return;
+  const btn = document.getElementById("btnConfirmDupDelete");
+  btn.disabled = true;
+  btn.textContent = "جارٍ الحذف...";
+
+  Promise.all(dupDeleteTargetIds.map(id => moatirineRef.child(id).remove().catch(err => {
+    console.error("فشل حذف مؤطر مكرر:", id, err);
+  }))).then(() => {
+    dupDeleteTargetIds.forEach(id => dupSelectedIds.delete(id));
+    document.getElementById("dupDeleteModal").classList.remove("show");
+    dupDeleteTargetIds = [];
+    btn.disabled = false;
+    btn.textContent = "حذف نهائي";
+  });
+});
+
+/* حذف مباشر لمؤطر واحد بالضغط على أيقونة 🚩 بجانبه داخل مجموعة التشابه */
+function quickDeleteDuplicate(id){
+  openDupDeleteConfirm([id]);
+}
+
 function renderDuplicates(){
   const container = document.getElementById("duplicatesContent");
   const groups = computeDuplicateGroups();
@@ -1861,59 +2310,111 @@ function renderDuplicates(){
   document.getElementById("dupCountBadge").textContent = groups.length + " حالة";
   updateDuplicatesBadge();
 
+  // تنظيف التحديد من مؤطرين لم يعودوا موجودين
+  Array.from(dupSelectedIds).forEach(id => { if(!allEntries[id]) dupSelectedIds.delete(id); });
+
   if(groups.length === 0){
     container.innerHTML = `<div class="empty-state"><div class="icon">✅</div><div>لا توجد أي تسجيلات متشابهة حالياً</div></div>`;
     return;
   }
 
-  container.innerHTML = groups.map(g => {
+  container.innerHTML = groups.map((g, gIndex) => {
+    const groupId = "dupgrp" + gIndex;
     const rows = g.ids.map(id => {
       const e = allEntries[id];
+      if(!e) return "";
+      const checked = dupSelectedIds.has(id) ? "checked" : "";
       return `<tr>
+        <td class="dup-select-cell"><input type="checkbox" class="dupRowCheckbox" data-id="${id}" data-group="${groupId}" ${checked} title="تحديد للحذف"></td>
         <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}</td>
         <td>${e.birth ? formatDate(e.birth) : "—"}</td>
         <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
         <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
         <td>
-          <button class="btn-secondary btn-small" onclick="document.querySelector('.tab-btn[data-tab=register]').click(); setTimeout(()=>openEdit('${id}'), 50);">تعديل</button>
+          <div class="row-actions">
+            <button class="btn-secondary btn-small" onclick="document.querySelector('.tab-btn[data-tab=register]').click(); setTimeout(()=>openEdit('${id}'), 50);">تعديل</button>
+            <button class="btn-flag btn-small" title="حذف هذا المؤطر مباشرة" onclick="quickDeleteDuplicate('${id}')">🚩 حذف</button>
+          </div>
         </td>
       </tr>`;
     }).join("");
 
-    return `<div class="dup-group">
+    return `<div class="dup-group" data-ids="${g.ids.join(',')}">
       <div class="dup-group-header">
         <span>${g.ids.length} مؤطرين متطابقين</span>
         <span class="dup-tag">${g.reason}</span>
       </div>
       <div class="table-wrap" style="border:none; border-radius:0;">
         <table>
-          <thead><tr><th>الاسم واللقب</th><th>تاريخ الميلاد</th><th>الرقم الانتخابي</th><th>الهاتف</th><th>إجراء</th></tr></thead>
+          <thead><tr><th style="width:34px;"></th><th>الاسم واللقب</th><th>تاريخ الميلاد</th><th>الرقم الانتخابي</th><th>الهاتف</th><th>إجراء</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
+      <div class="dup-group-footer">
+        <span class="dup-sel-count">0 محدّد</span>
+        <button type="button" class="btn-danger btn-small dup-group-delete-btn" disabled onclick="openDupDeleteConfirm(Array.from(dupSelectedIds).filter(id => '${g.ids.join(',')}'.split(',').includes(id)))">🗑 حذف المحدّدين من هذه المجموعة</button>
+      </div>
     </div>`;
   }).join("");
+
+  // ربط أحداث خانات التحديد داخل كل مجموعة
+  container.querySelectorAll(".dupRowCheckbox").forEach(cb => {
+    cb.addEventListener("change", function(){
+      toggleDupSelect(this.dataset.id, this.checked);
+    });
+  });
+
+  updateDupGroupCounters();
 }
 
 /* ============================================================
    تصدير البيانات إلى Excel
    ============================================================ */
-function buildExportRows(onlyAssigned){
-  const ids = Object.keys(allEntries).sort((a,b) => {
-    const eA = allEntries[a], eB = allEntries[b];
-    if((eA.center||"") !== (eB.center||"")) return (eA.center||"").localeCompare(eB.center||"");
-    if(String(eA.officeNumber||"") !== String(eB.officeNumber||"")) return String(eA.officeNumber||"").localeCompare(String(eB.officeNumber||""));
-    return ALL_POSITIONS.indexOf(getEntryPosition(eA)) - ALL_POSITIONS.indexOf(getEntryPosition(eB));
-  });
+/* ترتيب التصدير: حسب المركز، ثم رئيس المركز وطاقمه أولاً، ثم المكاتب مرتّبة برقمها
+   وداخل كل مكتب حسب النوع (بلدي ثم ولائي) ثم حسب ترتيب المناصب المعمول به */
+function exportSortTuple(e){
+  const centerIdx = e.center ? Object.keys(CENTERS).indexOf(e.center) : 999;
+  if(!e.assignLevel) return [999, 9, 999, 9, 999];
+  if(e.assignLevel === "center"){
+    return [centerIdx, 0, 0, 0, CENTER_POSITIONS.indexOf(e.centerPosition)];
+  }
+  const officeNum = Number(e.officeNumber);
+  return [
+    centerIdx, 1,
+    isNaN(officeNum) ? 999 : officeNum,
+    OFFICE_TYPES.indexOf(e.officeType),
+    POSITIONS_ORDER.indexOf(e.officePosition)
+  ];
+}
+
+function compareExportTuples(a, b){
+  for(let i = 0; i < a.length; i++){
+    if(a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
+
+function buildExportRows(onlyAssigned, centerFilter, typeFilter){
+  let ids = Object.keys(allEntries);
+
+  if(centerFilter){
+    ids = ids.filter(id => allEntries[id].center === centerFilter);
+  }
+  if(typeFilter){
+    // فلترة حسب النوع (بلدي/ولائي) تخص مقاعد المكاتب فقط — تُستبعد مقاعد طاقم المركز عند تفعيلها
+    ids = ids.filter(id => allEntries[id].assignLevel === "office" && allEntries[id].officeType === typeFilter);
+  }
+  if(onlyAssigned){
+    ids = ids.filter(id => !!allEntries[id].assignLevel);
+  }
+
+  ids.sort((a, b) => compareExportTuples(exportSortTuple(allEntries[a]), exportSortTuple(allEntries[b])));
 
   const rows = [];
   ids.forEach(id => {
     const e = allEntries[id];
-    if(onlyAssigned && !e.assignLevel) return;
     rows.push({
-      "الاسم": e.name || "",
-      "اللقب": e.lastName || "",
-      "اسم الأب": e.fatherName || "",
+      "الاسم واللقب": ((e.name || "") + " " + (e.lastName || "")).trim(),
       "تاريخ الميلاد": e.birth ? formatDate(e.birth) : "",
       "الرقم الانتخابي": e.electoralNum || "",
       "رقم الهاتف": e.phone || "",
@@ -1932,19 +2433,26 @@ function buildExportRows(onlyAssigned){
 }
 
 function exportExcel(onlyAssigned){
-  const rows = buildExportRows(onlyAssigned);
+  const centerFilter = document.getElementById("exportFilterCenter").value;
+  const typeFilter = document.getElementById("exportFilterType").value;
+  const rows = buildExportRows(onlyAssigned, centerFilter, typeFilter);
   if(rows.length === 0){
-    alert("لا توجد بيانات لتصديرها.");
+    alert("لا توجد بيانات مطابقة لهذا الاختيار لتصديرها.");
     return;
   }
   const ws = XLSX.utils.json_to_sheet(rows);
   ws["!cols"] = [
-    {wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:14},{wch:14},
+    {wch:22},{wch:14},{wch:16},{wch:14},{wch:14},
     {wch:22},{wch:26},{wch:12},{wch:12},{wch:14},{wch:12},{wch:20},{wch:26}
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "المؤطرين");
-  const fileName = onlyAssigned ? "المؤطرين_الموزعين.xlsx" : "جميع_المؤطرين.xlsx";
+
+  let fileName = onlyAssigned ? "المؤطرين_الموزعين" : "جميع_المؤطرين";
+  if(centerFilter && CENTERS[centerFilter]) fileName += "_مركز_" + CENTERS[centerFilter].name;
+  if(typeFilter) fileName += "_" + typeFilter;
+  fileName += ".xlsx";
+
   XLSX.writeFile(wb, fileName);
 }
 
