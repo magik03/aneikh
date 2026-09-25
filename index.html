@@ -547,13 +547,9 @@
 
     <form id="frmMoatir">
       <div class="grid">
-        <div class="field">
-          <label>الاسم <span class="req">*</span></label>
-          <input type="text" id="fName" required placeholder="مثال: أحمد">
-        </div>
-        <div class="field">
-          <label>اللقب <span class="req">*</span></label>
-          <input type="text" id="fLastName" required placeholder="مثال: بن علي">
+        <div class="field" style="grid-column: span 2;">
+          <label>الاسم واللقب <span class="req">*</span></label>
+          <input type="text" id="fFullName" required placeholder="مثال: أحمد بن علي">
         </div>
         <div class="field">
           <label>اسم الأب <span class="opt">(اختياري)</span></label>
@@ -799,13 +795,9 @@
   <div class="modal">
     <h3>تعديل بيانات المؤطر</h3>
     <div class="grid" style="margin-bottom:14px;">
-      <div class="field">
-        <label>الاسم</label>
-        <input type="text" id="eName">
-      </div>
-      <div class="field">
-        <label>اللقب</label>
-        <input type="text" id="eLastName">
+      <div class="field" style="grid-column: span 2;">
+        <label>الاسم واللقب</label>
+        <input type="text" id="eFullName">
       </div>
       <div class="field">
         <label>اسم الأب <span class="opt">(اختياري)</span></label>
@@ -980,7 +972,7 @@ collectionRef.limit(1).onSnapshot(
     if(!firstSnapshotReceived){
       firstSnapshotReceived = true;
       document.getElementById("connDot").className = "conn-dot on";
-      document.getElementById("connText").textContent = "";
+      document.getElementById("connText").textContent = "متصل بقاعدة البيانات (Firestore)";
     }
   },
   (err) => {
@@ -1093,8 +1085,10 @@ function getMissingFields(e){
 document.getElementById("frmMoatir").addEventListener("submit", function(e){
   e.preventDefault();
 
-  const name = document.getElementById("fName").value.trim();
-  const lastName = document.getElementById("fLastName").value.trim();
+  const fullName = document.getElementById("fFullName").value.trim();
+  const nameParts = fullName.split(/\s+/).filter(Boolean);
+  const name = nameParts[0] || "";
+  const lastName = nameParts.slice(1).join(" ");
   const fatherName = document.getElementById("fFatherName").value.trim();
   const birth = document.getElementById("fBirth").value;
   const electoralNum = document.getElementById("fElectoralNum").value.trim();
@@ -1102,9 +1096,9 @@ document.getElementById("frmMoatir").addEventListener("submit", function(e){
   const educationLevel = document.getElementById("fEducation").value;
   const notes = document.getElementById("fNotes").value.trim();
 
-  // الحقول الإلزامية الوحيدة الآن: الاسم، اللقب، المستوى التعليمي
-  if(!name || !lastName || !educationLevel){
-    showStatus("يرجى تعبئة الحقول الإلزامية: الاسم، اللقب، والمستوى التعليمي.", false);
+  // الحقول الإلزامية الوحيدة الآن: الاسم واللقب معاً، والمستوى التعليمي
+  if(!fullName || !educationLevel){
+    showStatus("يرجى تعبئة الحقول الإلزامية: الاسم واللقب، والمستوى التعليمي.", false);
     return;
   }
 
@@ -1285,8 +1279,7 @@ function openEdit(id){
   const e = allEntries[id];
   if(!e) return;
   editTargetId = id;
-  document.getElementById("eName").value = e.name || "";
-  document.getElementById("eLastName").value = e.lastName || "";
+  document.getElementById("eFullName").value = ((e.name || "") + " " + (e.lastName || "")).trim();
   document.getElementById("eFatherName").value = e.fatherName || "";
   document.getElementById("eBirth").value = e.birth || "";
   document.getElementById("eElectoralNum").value = e.electoralNum || "";
@@ -1304,11 +1297,13 @@ document.getElementById("btnCancelEdit").addEventListener("click", () => {
 document.getElementById("btnSaveEdit").addEventListener("click", () => {
   if(!editTargetId) return;
 
-  const name = document.getElementById("eName").value.trim();
-  const lastName = document.getElementById("eLastName").value.trim();
+  const eFullName = document.getElementById("eFullName").value.trim();
+  const eNameParts = eFullName.split(/\s+/).filter(Boolean);
+  const name = eNameParts[0] || "";
+  const lastName = eNameParts.slice(1).join(" ");
   const electoralNum = document.getElementById("eElectoralNum").value.trim() || null;
 
-  if(!name || !lastName){
+  if(!eFullName){
     alert("الاسم واللقب إلزاميان.");
     return;
   }
