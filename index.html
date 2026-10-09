@@ -11,6 +11,32 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
+<!--
+============================================================
+  وصف بنية البيانات — مجموعة Firestore: "مؤطرين"
+  (مهم للوحة المدير لاحقًا — لا تغيّر أسماء الحقول)
+============================================================
+  name             : الاسم (أول كلمة من الاسم الكامل)
+  lastName         : اللقب (بقية الكلمات)
+  birth            : تاريخ الميلاد بصيغة ISO "YYYY-MM-DD" أو null
+  electoralNum     : الرقم الانتخابي أو null
+  phone            : رقم الهاتف أو null
+  educationLevel   : المستوى التعليمي أو null
+  notes            : ملاحظات أو null
+  experience       : "new" (جديد — غير مسجّل في قوائمنا سابقًا) | "previous" (سابق) | null (قديم/غير محدد)
+  flagged          : true/false — هل عليه إشارة 🚩
+  issueType        : نوع المشكلة عند الإشارة أو null
+  issueReason      : (محجوز) null
+  deleted          : true/false — حذف ناعم (لا يُمسح السجل فعليًا من هذه المنصة أبدًا)
+  deletedAt        : وقت الحذف (ms) أو null
+  deleteReason     : سبب الحذف أو null
+  deletedByClient  : معرّف الجهاز الذي حذف أو null
+  createdAt        : وقت الإنشاء (ms)
+  updatedAt        : وقت آخر تعديل (ms)
+  clientId         : معرّف الجهاز الذي أنشأ السجل (بديل createdBy)
+  assignLevel, center, centerPosition, officeNumber, officeType, officePosition : حقول محجوزة (null)
+============================================================
+-->
 
 <style>
   :root{
@@ -26,6 +52,8 @@
     --success:#22c55e;
     --danger:#ef4444;
     --warning:#f59e0b;
+    --blue:#2563eb;
+    --blue-soft:rgba(37,99,235,0.08);
     --radius:14px;
   }
   *{box-sizing:border-box;}
@@ -138,10 +166,12 @@
     cursor:pointer;
     transition:transform .12s, opacity .12s;
   }
+  button:disabled{opacity:.5; cursor:not-allowed;}
   button:active{transform:scale(0.97);}
   .btn-primary{background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#fff;}
   .btn-secondary{background:#e9f1ec; color:var(--text); border:1px solid var(--border);}
   .btn-danger{background:rgba(239,68,68,0.15); color:#c0272d; border:1px solid rgba(239,68,68,0.3);}
+  .btn-blue{background:linear-gradient(90deg, #1d4ed8, var(--blue)); color:#fff;}
   .btn-small{padding:6px 12px; font-size:12px;}
 
   .status-msg{
@@ -158,8 +188,10 @@
   .toolbar{
     display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px;
   }
-  .toolbar input{flex:1; min-width:200px;}
+  .toolbar input[type="text"]{flex:1; min-width:200px;}
   .toolbar select{min-width:180px;}
+  .toolbar label.chk{display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); cursor:pointer; white-space:nowrap;}
+  .toolbar label.chk input{width:auto; padding:0;}
 
   .table-wrap{overflow-x:auto; border-radius:12px; border:1px solid var(--border);}
   table{width:100%; border-collapse:collapse; font-size:13.5px; min-width:820px;}
@@ -180,16 +212,24 @@
   tbody tr:hover{background:rgba(34,197,94,0.05);}
   tbody tr:last-child td{border-bottom:none;}
 
-  .pos-badge{
-    display:inline-block;
-    padding:3px 10px;
-    border-radius:20px;
-    font-size:11.5px;
-    font-weight:700;
-    white-space:nowrap;
-  }
   .row-actions{display:flex; gap:6px; flex-wrap:nowrap;}
   .row-actions button{white-space:nowrap;}
+
+  /* المؤطر الجديد: تلوين أزرق خفيف (يأتي قبل الأحمر ليكون الأحمر هو الأولوية) */
+  tbody tr.new-row{background:var(--blue-soft);}
+  tbody tr.new-row:hover{background:rgba(37,99,235,0.14);}
+  .badge-new{
+    display:inline-block;
+    margin-inline-start:8px;
+    padding:2px 10px;
+    border-radius:20px;
+    font-size:11px;
+    font-weight:800;
+    background:var(--blue);
+    color:#fff;
+    vertical-align:middle;
+    white-space:nowrap;
+  }
 
   tbody tr.flagged-row{background:rgba(239,68,68,0.08);}
   tbody tr.flagged-row:hover{background:rgba(239,68,68,0.14);}
@@ -258,10 +298,36 @@
     padding:24px;
     max-width:460px;
     width:100%;
+    max-height:92vh;
+    overflow-y:auto;
   }
   .modal h3{margin:0 0 10px; font-size:17px;}
   .modal p{margin:0 0 18px; color:var(--muted); font-size:14px; line-height:1.7;}
+  .modal p.pre{white-space:pre-line;}
   .modal .actions{margin-top:0;}
+
+  /* ---------- إشعارات (Toasts) ---------- */
+  #toastBox{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    z-index:10000; display:flex; flex-direction:column; gap:8px; align-items:center;
+    width:calc(100% - 32px); max-width:460px; pointer-events:none;
+  }
+  .toast{
+    width:100%;
+    padding:12px 16px;
+    border-radius:12px;
+    font-size:13.5px; font-weight:700;
+    box-shadow:0 10px 30px rgba(0,0,0,0.18);
+    animation:toastIn .25s ease-out;
+    background:#182620; color:#fff;
+  }
+  .toast.ok{background:#15803d;}
+  .toast.err{background:#b91c1c;}
+  .toast.info{background:#1d4ed8;}
+  @keyframes toastIn{
+    from{opacity:0; transform:translateY(12px);}
+    to{opacity:1; transform:translateY(0);}
+  }
 
   @media (max-width:600px){
     header h1{font-size:21px;}
@@ -288,104 +354,6 @@
   .tab-btn.active{color:var(--accent-2); border-bottom-color:var(--accent);}
   .tab-section{display:none;}
   .tab-section.active{display:block;}
-
-  /* ---------- لوحة المتابعة ---------- */
-  .center-block{
-    border:1px solid var(--border);
-    border-radius:12px;
-    margin-bottom:18px;
-    overflow:hidden;
-  }
-  .center-header{
-    background:linear-gradient(90deg, rgba(34,197,94,0.14), transparent);
-    padding:12px 16px;
-    font-weight:800;
-    font-size:15px;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    flex-wrap:wrap;
-    gap:8px;
-  }
-  .center-header .center-progress{
-    font-size:12px; font-weight:600; color:var(--muted);
-  }
-  .offices-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(420px, 1fr));
-    gap:12px;
-    padding:14px;
-  }
-  .office-card{
-    background:#f6faf7;
-    border:1px solid var(--border);
-    border-radius:10px;
-    padding:12px;
-    overflow-x:auto;
-  }
-  .office-card .office-title{
-    font-weight:700;
-    font-size:13.5px;
-    margin-bottom:10px;
-    color:var(--accent-2);
-  }
-  .office-types{display:flex; gap:10px; flex-wrap:wrap;}
-  .office-type-col{flex:1; min-width:180px;}
-  .office-type-col .type-label{
-    font-size:11px; font-weight:700; color:var(--muted);
-    margin-bottom:6px; text-align:center;
-    text-transform:uppercase;
-    padding:4px 0;
-    border-bottom:1px solid var(--border);
-  }
-  .seat{
-    font-size:12px;
-    padding:8px 11px;
-    border-radius:8px;
-    margin-bottom:5px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-    flex-wrap:wrap;
-  }
-  .seat.filled{background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.22);}
-  .seat.empty{background:rgba(0,0,0,0.025); border:1px solid transparent;}
-  .seat .pos-name{
-    font-weight:700; color:var(--accent-2); font-size:11.5px;
-    white-space:nowrap; flex-shrink:0;
-  }
-  .seat.empty .pos-name{color:var(--muted);}
-  .seat .empty-tag{color:var(--muted); font-size:11.5px;}
-  .seat .occ-line{
-    color:#15803d; font-size:11.5px; text-align:left; direction:rtl;
-    display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;
-  }
-  .seat .occ-line .occ-name{font-weight:700; color:#166534;}
-  .seat .occ-line .occ-detail{color:var(--muted); white-space:nowrap;}
-  .seat .occ-line .occ-detail b{color:#15803d; font-weight:600;}
-
-  /* ---------- جدول لوحة المتابعة ---------- */
-  .mon-table-wrap{overflow-x:auto; border-radius:12px; border:1px solid var(--border); margin:0 14px 14px;}
-  .mon-table{width:100%; border-collapse:collapse; font-size:12.5px; min-width:760px;}
-  .mon-table th{
-    background:#eef4f0; color:var(--muted); text-align:right;
-    padding:9px 12px; font-weight:700; white-space:nowrap; border-bottom:1px solid var(--border);
-  }
-  .mon-table td{padding:8px 12px; border-bottom:1px solid #e4ece7; white-space:nowrap;}
-  .mon-table tr:last-child td{border-bottom:none;}
-  .mon-table tr.row-filled{background:rgba(34,197,94,0.05);}
-  .mon-table tr.row-filled:hover{background:rgba(34,197,94,0.1);}
-  .mon-table tr.row-empty{color:var(--muted);}
-  .mon-table tr.row-flagged{background:rgba(239,68,68,0.1) !important;}
-  .mon-table tr.row-flagged:hover{background:rgba(239,68,68,0.16) !important;}
-  .mon-table .lvl-tag{
-    font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:20px; white-space:nowrap;
-  }
-  .mon-table .lvl-tag.center{background:rgba(239,68,68,0.15); color:#c0272d;}
-  .mon-table .lvl-tag.baladi{background:rgba(34,197,94,0.15); color:#15803d;}
-  .mon-table .lvl-tag.wilaya{background:rgba(245,158,11,0.15); color:#b45309;}
-  .no-results-msg{padding:24px; text-align:center; color:var(--muted); font-size:13px;}
 
   /* ---------- شاشة الشعار الافتتاحية ---------- */
   #splashScreen{
@@ -464,40 +432,12 @@
     font-size:11px; font-weight:700; padding:2px 10px; border-radius:20px;
     background:rgba(245,158,11,0.2); color:#b45309;
   }
-
-  /* ---------- استيراد Excel ---------- */
-  .import-box{
-    border:1px dashed var(--border);
-    border-radius:12px;
-    padding:14px 16px;
-    display:flex;
-    align-items:center;
-    gap:12px;
-    flex-wrap:wrap;
-    background:rgba(34,197,94,0.04);
-  }
-  .import-box input[type="file"]{
-    color:var(--muted);
-    font-size:13px;
-    max-width:280px;
-  }
-  .import-summary{
-    font-size:13px;
-    color:var(--muted);
-    line-height:1.8;
-  }
-  .import-summary b{color:var(--text);}
-
-  /* ---------- تحديد للحذف في التسجيلات المتشابهة ---------- */
-  .dup-select-row{background:rgba(239,68,68,0.1) !important;}
   .dup-select-cell{width:34px; text-align:center;}
   .dup-group-footer{
     display:flex; justify-content:flex-end; align-items:center; gap:10px;
     padding:10px 16px; border-top:1px solid rgba(245,158,11,0.25);
   }
   .dup-group-footer .dup-sel-count{font-size:12.5px; color:var(--muted);}
-
-
 </style>
 </head>
 <body>
@@ -539,8 +479,6 @@
   });
 </script>
 
-
-
 <header>
   <div style="display:flex; justify-content:center; align-items:center; max-width:1100px; margin:0 auto; flex-wrap:wrap; gap:12px;">
     <img src="https://i.ibb.co/k291pTkS/image.png" alt="شعار الانتخابات" class="header-logo">
@@ -548,7 +486,6 @@
       <h1>منصة تسجيل المؤطرين</h1>
       <p><span class="conn-dot off" id="connDot"></span><span id="connText">جارٍ الاتصال بقاعدة البيانات...</span></p>
     </div>
-    
   </div>
 </header>
 
@@ -564,7 +501,16 @@
         <div class="stat-value" id="statTotal">0</div>
         <div class="stat-label">إجمالي المؤطرين</div>
       </div>
-      
+      <div class="stat-card" style="background:linear-gradient(135deg, rgba(37,99,235,0.12), rgba(37,99,235,0.05)); border:1px solid rgba(37,99,235,0.25);">
+        <div class="stat-icon">🔵</div>
+        <div class="stat-value" style="color:var(--blue);" id="statNew">0</div>
+        <div class="stat-label">مؤطرون جدد</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05)); border:1px solid rgba(34,197,94,0.2);">
+        <div class="stat-icon">🔁</div>
+        <div class="stat-value" id="statPrev">0</div>
+        <div class="stat-label">مؤطرون سابقون</div>
+      </div>
       <div class="stat-card" style="background:linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05)); border:1px solid rgba(239,68,68,0.2);">
         <div class="stat-icon">🚩</div>
         <div class="stat-value" style="color:var(--danger);" id="statFlagged">0</div>
@@ -575,7 +521,6 @@
 
   <div class="tabs">
     <button class="tab-btn active" data-tab="register">📝 تسجيل المؤطرين</button>
-    
     <button class="tab-btn" data-tab="duplicates">🧬 التسجيلات المتشابهة <span class="counter" id="dupTabCounter" style="margin-inline-start:4px; padding:2px 8px;"><b>0</b></span></button>
   </div>
 
@@ -641,9 +586,13 @@
 
     <div class="toolbar">
       <input type="text" id="searchBox" placeholder="بحث بالاسم، اللقب، الرقم الانتخابي، الهاتف أو تاريخ الميلاد...">
-      
-      <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); cursor:pointer; white-space:nowrap;">
-        <input type="checkbox" id="filterFlaggedOnly" style="width:auto; padding:0;">
+
+      <label class="chk">
+        <input type="checkbox" id="filterNewOnly">
+        إظهار الجدد فقط 🔵
+      </label>
+      <label class="chk">
+        <input type="checkbox" id="filterFlaggedOnly">
         إظهار المُشار عليهم فقط 🚩
       </label>
     </div>
@@ -657,7 +606,6 @@
             <th>تاريخ الميلاد</th>
             <th>الرقم الانتخابي</th>
             <th>الهاتف</th>
-            
             <th>ملاحظات</th>
             <th>إجراءات</th>
           </tr>
@@ -673,8 +621,6 @@
 
   </div><!-- /tab-register -->
 
-
-
   <!-- ============ قسم التسجيلات المتشابهة ============ -->
   <div class="tab-section" id="tab-duplicates">
     <div class="card">
@@ -683,7 +629,7 @@
         <span class="badge" id="dupCountBadge">0 حالة</span>
       </h2>
       <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
-        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب، أو نفس الرقم الانتخابي، أو نفس تاريخ الميلاد — لاكتشاف التسجيلات المكررة بسهولة. حدّد المؤطر (أو المؤطرين) المكرر داخل كل مجموعة بالضغط على 🚩 ثم احذفه مباشرة.
+        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب، أو نفس الرقم الانتخابي، أو نفس تاريخ الميلاد — لاكتشاف التسجيلات المكررة بسهولة. حدّد المؤطر (أو المؤطرين) المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
       </p>
       <div id="duplicatesContent"></div>
     </div>
@@ -715,6 +661,7 @@
       <div class="field">
         <label>المستوى التعليمي</label>
         <select id="eEducation">
+          <option value="">غير محدد</option>
           <option value="بدون مستوى">بدون مستوى</option>
           <option value="إبتدائي">إبتدائي</option>
           <option value="متوسط">متوسط</option>
@@ -722,6 +669,14 @@
           <option value="ليسانس">ليسانس</option>
           <option value="ماستر">ماستر</option>
           <option value="ماجستير">ماجستير</option>
+        </select>
+      </div>
+      <div class="field" style="grid-column: span 2;">
+        <label>الحالة (جديد / سابق)</label>
+        <select id="eExperience">
+          <option value="">غير محدد</option>
+          <option value="new">🔵 جديد (غير مسجّل في قوائمنا سابقًا)</option>
+          <option value="previous">سابق</option>
         </select>
       </div>
       <div class="field" style="grid-column: span 2;">
@@ -753,29 +708,44 @@
   </div>
 </div>
 
-<!-- Modal تأكيد الحذف -->
-<div class="modal-overlay" id="deleteModal">
+<!-- Modal سبب الحذف (حذف ناعم — يُرسل للمدير) -->
+<div class="modal-overlay" id="deleteReasonModal">
   <div class="modal">
-    <h3>تأكيد الحذف</h3>
-    <p>هل أنت متأكد من حذف هذا المؤطر؟ لا يمكن التراجع عن هذا الإجراء.</p>
+    <h3>🗑 حذف مؤطر</h3>
+    <p id="delReasonMsg" class="pre"></p>
+    <div class="field" style="margin-bottom:12px;">
+      <label>سبب الحذف <span class="req">*</span></label>
+      <select id="delReasonSelect">
+        <option value="">اختر سبب الحذف</option>
+        <option value="مكرر">مكرر</option>
+        <option value="خطأ إدخال">خطأ إدخال</option>
+        <option value="انسحب">انسحب</option>
+        <option value="غير مؤهل">غير مؤهل</option>
+        <option value="أخرى">أخرى</option>
+      </select>
+    </div>
+    <div class="field" id="delReasonOtherWrap" style="margin-bottom:12px; display:none;">
+      <label>اذكر السبب <span class="req">*</span></label>
+      <textarea id="delReasonOther" placeholder="اكتب سبب الحذف..."></textarea>
+    </div>
+    <p style="font-size:12px; margin-bottom:14px;">لن يُمسح السجل نهائيًا؛ سيُرسل إلى المدير وحده ليقرر استرجاعه أو حذفه.</p>
     <div class="actions">
-      <button class="btn-danger" id="btnConfirmDelete">حذف نهائي</button>
-      <button class="btn-secondary" id="btnCancelDelete">إلغاء</button>
+      <button class="btn-danger" id="btnConfirmDelReason">تأكيد الحذف</button>
+      <button class="btn-secondary" id="btnCancelDelReason">إلغاء</button>
     </div>
   </div>
 </div>
 
-<!-- Modal تأكيد حذف مجموعة متشابهة -->
-<div class="modal-overlay" id="dupDeleteModal">
+<!-- Modal اختيار عام (تأكيد / جديد أو سابق / تنبيه تكرار) -->
+<div class="modal-overlay" id="choiceModal" style="z-index:60;">
   <div class="modal">
-    <h3>تأكيد حذف المحدّدين</h3>
-    <p id="dupDeleteMsg">هل أنت متأكد من حذف المؤطرين المحدّدين؟ لا يمكن التراجع عن هذا الإجراء.</p>
-    <div class="actions">
-      <button class="btn-danger" id="btnConfirmDupDelete">حذف نهائي</button>
-      <button class="btn-secondary" id="btnCancelDupDelete">إلغاء</button>
-    </div>
+    <h3 id="choiceTitle"></h3>
+    <p id="choiceMsg" class="pre"></p>
+    <div class="actions" id="choiceActions"></div>
   </div>
 </div>
+
+<div id="toastBox"></div>
 
 <script>
 /* ============================================================
@@ -795,15 +765,35 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const collectionRef = db.collection("مؤطرين");
 
-// كائن يحاكي واجهة Realtime Database (ref.on / push / child().update / child().remove)
-// حتى تبقى بقية الكود كما هي دون أي تعديل إضافي
+const $ = (id) => document.getElementById(id);
+
+/* ---------------- معرّف الجهاز (بديل createdBy) ---------------- */
+const CLIENT_ID = (function(){
+  try{
+    let id = localStorage.getItem("moatir_client_id");
+    if(!id){
+      id = "c_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem("moatir_client_id", id);
+    }
+    return id;
+  }catch(err){
+    return "c_nostorage_" + Math.random().toString(36).slice(2, 10);
+  }
+})();
+
+/* ---------------- طبقة الوصول للبيانات ---------------- */
+// ملاحظة: لا يوجد حذف فعلي في هذه المنصة أبدًا — الحذف دائمًا "ناعم" (deleted: true)
 const moatirineRef = {
   on(event, cb){
     if(event === "value"){
       collectionRef.onSnapshot(
         (snapshot) => {
           const data = {};
-          snapshot.forEach(doc => { data[doc.id] = doc.data(); });
+          snapshot.forEach(doc => {
+            const d = doc.data();
+            if(d.deleted === true) return; // المحذوفون ناعمًا لا يظهرون في هذه المنصة
+            data[doc.id] = d;
+          });
           cb({ val: () => data });
         },
         (err) => {
@@ -816,28 +806,137 @@ const moatirineRef = {
   push(entry){
     return collectionRef.add(entry);
   },
-  child(id){
-    return {
-      update: (changes) => collectionRef.doc(id).update(changes),
-      remove: () => collectionRef.doc(id).delete()
-    };
+  update(id, changes){
+    return collectionRef.doc(id).update(Object.assign({}, changes, { updatedAt: Date.now() }));
+  },
+  async softDelete(ids, reason){
+    const now = Date.now();
+    for(let i = 0; i < ids.length; i += 500){
+      const batch = db.batch();
+      ids.slice(i, i + 500).forEach(id => {
+        batch.update(collectionRef.doc(id), {
+          deleted: true,
+          deletedAt: now,
+          deleteReason: reason,
+          deletedByClient: CLIENT_ID,
+          updatedAt: now
+        });
+      });
+      await batch.commit();
+    }
   }
 };
 
-
-
-const EDUCATION_LEVELS = ["بدون مستوى", "إبتدائي", "متوسط", "ثانوي", "ليسانس", "ماستر", "ماجستير"];
-
-
-
-let allEntries = {}; // { id: {...} }
-let deleteTargetId = null;
+let allEntries = {}; // { id: {...} } — بدون المحذوفين
 let editTargetId = null;
 let flagTargetId = null;
-let selectedIds = new Set(); // لتحديد المؤطرين المراد حذفهم دفعة واحدة
+let selectedIds = new Set();     // تحديد دفعة في القائمة الرئيسية
+let dupSelectedIds = new Set();  // تحديد دفعة في تبويب المتشابهة
 
-/* تحديد المؤطرين المكررين المراد حذفهم من تبويب "التسجيلات المتشابهة" */
-let dupSelectedIds = new Set();
+/* ============================================================
+   أدوات الواجهة: Toast + نوافذ الاختيار
+   ============================================================ */
+function showToast(msg, type){
+  const box = $("toastBox");
+  const el = document.createElement("div");
+  el.className = "toast " + (type || "info");
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = "opacity .3s";
+    el.style.opacity = "0";
+    setTimeout(() => { if(el.parentNode) el.parentNode.removeChild(el); }, 320);
+  }, 3500);
+}
+
+/* نافذة اختيار عامة: تعيد قيمة الزر المضغوط (أو null عند الإلغاء) */
+function askChoice(opts){
+  return new Promise(resolve => {
+    const modal = $("choiceModal");
+    $("choiceTitle").textContent = opts.title || "";
+    $("choiceMsg").textContent = opts.message || "";
+    const box = $("choiceActions");
+    box.innerHTML = "";
+    const done = (v) => {
+      modal.classList.remove("show");
+      box.innerHTML = "";
+      resolve(v);
+    };
+    opts.choices.forEach(c => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = c.cls || "btn-secondary";
+      b.textContent = c.label;
+      b.addEventListener("click", () => done(c.value));
+      box.appendChild(b);
+    });
+    modal.classList.add("show");
+  });
+}
+
+function askConfirm(title, message, okLabel){
+  return askChoice({
+    title, message,
+    choices: [
+      { label: okLabel || "متابعة", value: true, cls: "btn-primary" },
+      { label: "إلغاء", value: false, cls: "btn-secondary" }
+    ]
+  }).then(v => v === true);
+}
+
+/* ---------------- نافذة سبب الحذف ---------------- */
+function askDeleteReason(ids){
+  return new Promise(resolve => {
+    const modal = $("deleteReasonModal");
+    const names = ids.map(id => {
+      const e = allEntries[id];
+      return e ? ("• " + e.name + " " + e.lastName) : "";
+    }).filter(Boolean);
+    const shown = names.slice(0, 8).join("\n") + (names.length > 8 ? "\n… و" + (names.length - 8) + " آخرين" : "");
+    $("delReasonMsg").textContent = "سيتم حذف " + ids.length + " مؤطر:\n" + shown;
+    $("delReasonSelect").value = "";
+    $("delReasonOther").value = "";
+    $("delReasonOtherWrap").style.display = "none";
+    modal.classList.add("show");
+
+    const finish = (v) => { modal.classList.remove("show"); resolve(v); };
+
+    $("delReasonSelect").onchange = function(){
+      $("delReasonOtherWrap").style.display = this.value === "أخرى" ? "flex" : "none";
+    };
+    $("btnConfirmDelReason").onclick = function(){
+      const sel = $("delReasonSelect").value;
+      if(!sel){ showToast("يرجى اختيار سبب الحذف.", "err"); return; }
+      let reason = sel;
+      if(sel === "أخرى"){
+        const txt = $("delReasonOther").value.trim();
+        if(!txt){ showToast("يرجى كتابة سبب الحذف.", "err"); return; }
+        reason = "أخرى: " + txt;
+      }
+      finish(reason);
+    };
+    $("btnCancelDelReason").onclick = function(){ finish(null); };
+  });
+}
+
+/* طلب حذف (ناعم) لمؤطر أو أكثر مع سبب إلزامي */
+async function requestDelete(ids){
+  ids = ids.filter(id => allEntries[id]);
+  if(ids.length === 0) return false;
+  const reason = await askDeleteReason(ids);
+  if(!reason) return false;
+  try{
+    await moatirineRef.softDelete(ids, reason);
+    ids.forEach(id => { selectedIds.delete(id); dupSelectedIds.delete(id); });
+    updateBulkDeleteUI();
+    showToast("تم الحذف وإرساله إلى المدير ✅", "ok");
+    return true;
+  }catch(err){
+    console.error("فشل الحذف:", err);
+    showToast("حدث خطأ أثناء الحذف: " + err.message, "err");
+    return false;
+  }
+}
 
 /* ---------------- حالة الاتصال ---------------- */
 let firstSnapshotReceived = false;
@@ -845,13 +944,13 @@ collectionRef.limit(1).onSnapshot(
   () => {
     if(!firstSnapshotReceived){
       firstSnapshotReceived = true;
-      document.getElementById("connDot").className = "conn-dot on";
-      document.getElementById("connText").textContent = "متصل بقاعدة البيانات (Firestore)";
+      $("connDot").className = "conn-dot on";
+      $("connText").textContent = "متصل بقاعدة البيانات (Firestore)";
     }
   },
   (err) => {
-    document.getElementById("connDot").className = "conn-dot off";
-    document.getElementById("connText").textContent = "غير متصل: " + err.message;
+    $("connDot").className = "conn-dot off";
+    $("connText").textContent = "غير متصل: " + err.message;
   }
 );
 
@@ -865,8 +964,7 @@ moatirineRef.on("value", (snapshot) => {
     showPageError("خطأ أثناء عرض قائمة المؤطرين: " + err.message);
   }
   try{
-    
-    if(document.getElementById("tab-duplicates").classList.contains("active")) renderDuplicates();
+    if($("tab-duplicates").classList.contains("active")) renderDuplicates();
   }catch(err){
     console.error("خطأ في تحديث التبويبات:", err);
     showPageError("خطأ أثناء تحديث التبويبات: " + err.message);
@@ -876,27 +974,18 @@ moatirineRef.on("value", (snapshot) => {
 });
 
 /* ============================================================
-   لوحة الإحصائيات (أعلى الصفحة)
+   لوحة الإحصائيات
    ============================================================ */
-
-
 function updateStatsDashboard(){
-  const ids = Object.keys(allEntries);
-  const total = ids.length;
-  
-  const flagged = ids.filter(id => allEntries[id].flagged).length;
-  
-
-  const elTotal = document.getElementById("statTotal");
-  
-  const elFlagged = document.getElementById("statFlagged");
-  if(elTotal) elTotal.textContent = total;
-  
-  if(elFlagged) elFlagged.textContent = flagged;
+  const list = Object.keys(allEntries).map(id => allEntries[id]);
+  $("statTotal").textContent = list.length;
+  $("statNew").textContent = list.filter(e => e.experience === "new").length;
+  $("statPrev").textContent = list.filter(e => e.experience === "previous").length;
+  $("statFlagged").textContent = list.filter(e => e.flagged).length;
 }
 
 function showPageError(msg){
-  const el = document.getElementById("errorBanner");
+  const el = $("errorBanner");
   if(el){
     el.style.display = "block";
     el.textContent = "⚠️ " + msg + " — أرسل هذا النص لمن صمّم الصفحة";
@@ -912,7 +1001,7 @@ function findDuplicateMatches(name, lastName, electoralNum, excludeId){
   Object.keys(allEntries).forEach(id => {
     if(id === excludeId) return;
     const e = allEntries[id];
-    const eFullKey = (e.name + " " + e.lastName).trim().toLowerCase();
+    const eFullKey = ((e.name || "") + " " + (e.lastName || "")).trim().toLowerCase();
     const reasons = [];
     if(fullKey && eFullKey === fullKey) reasons.push("نفس الاسم واللقب");
     if(electoralNum && e.electoralNum && e.electoralNum === electoralNum) reasons.push("نفس الرقم الانتخابي");
@@ -921,13 +1010,15 @@ function findDuplicateMatches(name, lastName, electoralNum, excludeId){
   return matches;
 }
 
-function confirmIfDuplicates(name, lastName, electoralNum, excludeId){
+async function confirmIfDuplicates(name, lastName, electoralNum, excludeId){
   const matches = findDuplicateMatches(name, lastName, electoralNum, excludeId);
-  if(matches.length === 0) return true; // لا يوجد تكرار — تابع طبيعياً
-  const details = matches.map(m => `• ${m.e.name} ${m.e.lastName} — ${m.reasons.join(" و ")}`).join("\n");
-  const msg = "⚠️ تنبيه: يوجد مؤطر (أو أكثر) مسجّل مسبقاً بنفس البيانات:\n\n" + details +
-              "\n\nهل تريد المتابعة والحفظ رغم ذلك؟";
-  return confirm(msg);
+  if(matches.length === 0) return true;
+  const details = matches.map(m => "• " + m.e.name + " " + (m.e.lastName || "") + " — " + m.reasons.join(" و ")).join("\n");
+  return askConfirm(
+    "⚠️ تنبيه: تكرار محتمل",
+    "يوجد مؤطر (أو أكثر) مسجّل مسبقاً بنفس البيانات:\n\n" + details + "\n\nهل تريد المتابعة والحفظ رغم ذلك؟",
+    "متابعة رغم ذلك"
+  );
 }
 
 /* ============================================================
@@ -943,11 +1034,9 @@ function getMissingFields(e){
 
 /* ============================================================
    تنسيق تاريخ الميلاد تلقائياً أثناء الكتابة أو اللصق
-   يقبل: 02/02/2006 أو 02.02.2006 أو 02022006 ... يعيد تنسيقها كلها
-   إلى يوم/شهر/سنة أثناء الكتابة (تعمل نفس الآلية مع اللصق أيضاً)
    ============================================================ */
 function formatBirthInputLive(el){
-  let digits = el.value.replace(/\D/g, "").slice(0, 8); // أقصى 8 أرقام: يوم(2) شهر(2) سنة(4)
+  let digits = el.value.replace(/\D/g, "").slice(0, 8);
   let formatted = digits;
   if(digits.length > 4){
     formatted = digits.slice(0,2) + "/" + digits.slice(2,4) + "/" + digits.slice(4);
@@ -958,14 +1047,13 @@ function formatBirthInputLive(el){
 }
 
 function attachBirthAutoFormat(id){
-  const el = document.getElementById(id);
+  const el = $(id);
   if(!el) return;
   el.addEventListener("input", function(){ formatBirthInputLive(this); });
 }
 attachBirthAutoFormat("fBirth");
 attachBirthAutoFormat("eBirth");
 
-/* تحويل نص "يوم/شهر/سنة" المعروض في الحقل إلى صيغة ISO لتخزينه في قاعدة البيانات */
 function birthDisplayToISO(text){
   const match = (text || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if(!match) return null;
@@ -978,113 +1066,148 @@ function birthDisplayToISO(text){
 }
 
 /* ---------------- إرسال البيانات ---------------- */
-document.getElementById("frmMoatir").addEventListener("submit", function(e){
-  e.preventDefault();
+$("frmMoatir").addEventListener("submit", async function(ev){
+  ev.preventDefault();
 
-  const fullName = document.getElementById("fFullName").value.trim();
+  const fullName = $("fFullName").value.trim();
   const nameParts = fullName.split(/\s+/).filter(Boolean);
   const name = nameParts[0] || "";
   const lastName = nameParts.slice(1).join(" ");
-  const birth = birthDisplayToISO(document.getElementById("fBirth").value);
-  const electoralNum = document.getElementById("fElectoralNum").value.trim();
-  const phone = document.getElementById("fPhone").value.trim();
-  const educationLevel = document.getElementById("fEducation").value;
-  const notes = document.getElementById("fNotes").value.trim();
+  const birth = birthDisplayToISO($("fBirth").value);
+  const electoralNum = $("fElectoralNum").value.trim();
+  const phone = $("fPhone").value.trim();
+  const educationLevel = $("fEducation").value;
+  const notes = $("fNotes").value.trim();
 
-  // الحقل الإلزامي الوحيد الآن: الاسم واللقب
   if(!fullName){
     showStatus("يرجى تعبئة الاسم واللقب.", false);
     return;
   }
 
-  // فحص التكرار قبل الحفظ
-  if(!confirmIfDuplicates(name, lastName, electoralNum, null)){
-    showStatus("تم إلغاء الحفظ.", false);
-    return;
-  }
-
-  const entry = {
-    name, lastName,
-    birth: birth || null,
-    electoralNum: electoralNum || null,
-    phone: phone || null,
-    educationLevel: educationLevel || null,
-    notes: notes || null,
-    assignLevel: null,     // "center" أو "office" أو null
-    center: null,
-    centerPosition: null,
-    officeNumber: null,
-    officeType: null,
-    officePosition: null,
-    flagged: false,
-    issueType: null,
-    issueReason: null,
-    createdAt: Date.now()
-  };
-
-  const btn = document.getElementById("btnSubmit");
+  const btn = $("btnSubmit");
   btn.disabled = true;
-  btn.textContent = "جارٍ الحفظ...";
 
-  moatirineRef.push(entry)
-    .then(() => {
-      showStatus("تم تسجيل المؤطر بنجاح ✅", true);
-      document.getElementById("frmMoatir").reset();
-    })
-    .catch((err) => {
-      console.error("خطأ أثناء الحفظ في Firestore:", err);
-      showStatus("حدث خطأ أثناء الحفظ: " + err.message, false);
-      showPageError("فشل حفظ المؤطر: " + err.message);
-    })
-    .finally(() => {
-      btn.disabled = false;
-      btn.textContent = "حفظ المؤطر";
+  try{
+    // 1) فحص التكرار العام
+    if(!(await confirmIfDuplicates(name, lastName, electoralNum, null))){
+      showStatus("تم إلغاء الحفظ.", false);
+      return;
+    }
+
+    // 2) جديد أم سابق؟ (بلا قيمة افتراضية)
+    let experience = await askChoice({
+      title: "هل المؤطر جديد أم سابق؟",
+      message: "المؤطر: " + fullName + "\n\nجديد = غير مسجّل في قوائمنا سابقًا\nسابق = مسجّل في قوائمنا من قبل",
+      choices: [
+        { label: "🔵 جديد", value: "new", cls: "btn-blue" },
+        { label: "سابق", value: "previous", cls: "btn-primary" },
+        { label: "إلغاء", value: null, cls: "btn-secondary" }
+      ]
     });
+    if(!experience){
+      showStatus("تم إلغاء الحفظ.", false);
+      return;
+    }
+
+    // 3) تنبيه: اختار "جديد" لكن الاسم موجود فعلًا
+    if(experience === "new"){
+      const sameName = findDuplicateMatches(name, lastName, "", null)
+        .some(m => m.reasons.includes("نفس الاسم واللقب"));
+      if(sameName){
+        const choice = await askChoice({
+          title: "⚠️ هذا الاسم مسجّل من قبل",
+          message: "هذا الاسم موجود فعلًا في القائمة.\nهل هو فعلًا مؤطر جديد؟",
+          choices: [
+            { label: "نعم، هو جديد", value: "new", cls: "btn-blue" },
+            { label: "غيّر إلى سابق", value: "previous", cls: "btn-primary" },
+            { label: "إلغاء", value: null, cls: "btn-secondary" }
+          ]
+        });
+        if(!choice){
+          showStatus("تم إلغاء الحفظ.", false);
+          return;
+        }
+        experience = choice;
+      }
+    }
+
+    const now = Date.now();
+    const entry = {
+      name, lastName,
+      birth: birth || null,
+      electoralNum: electoralNum || null,
+      phone: phone || null,
+      educationLevel: educationLevel || null,
+      notes: notes || null,
+      experience,
+      assignLevel: null,
+      center: null,
+      centerPosition: null,
+      officeNumber: null,
+      officeType: null,
+      officePosition: null,
+      flagged: false,
+      issueType: null,
+      issueReason: null,
+      deleted: false,
+      deletedAt: null,
+      deleteReason: null,
+      deletedByClient: null,
+      clientId: CLIENT_ID,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    btn.textContent = "جارٍ الحفظ...";
+    await moatirineRef.push(entry);
+    showStatus("تم تسجيل المؤطر بنجاح ✅", true);
+    showToast(experience === "new" ? "تم تسجيل مؤطر جديد 🔵" : "تم تسجيل المؤطر (سابق) ✅", "ok");
+    $("frmMoatir").reset();
+  }catch(err){
+    console.error("خطأ أثناء الحفظ في Firestore:", err);
+    showStatus("حدث خطأ أثناء الحفظ: " + err.message, false);
+    showPageError("فشل حفظ المؤطر: " + err.message);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = "حفظ المؤطر";
+  }
 });
 
-document.getElementById("btnReset").addEventListener("click", () => {
-  document.getElementById("frmMoatir").reset();
+$("btnReset").addEventListener("click", () => {
+  $("frmMoatir").reset();
   hideStatus();
 });
 
 function showStatus(msg, ok){
-  const el = document.getElementById("statusMsg");
+  const el = $("statusMsg");
   el.textContent = msg;
   el.className = "status-msg show " + (ok ? "ok" : "err");
   setTimeout(hideStatus, 4000);
 }
 function hideStatus(){
-  const el = document.getElementById("statusMsg");
-  el.className = "status-msg";
+  $("statusMsg").className = "status-msg";
 }
-
-
 
 /* ---------------- عرض الجدول ---------------- */
 function renderTable(){
-  const search = document.getElementById("searchBox").value.trim().toLowerCase();
-  
-  const flaggedOnly = document.getElementById("filterFlaggedOnly").checked;
+  const search = $("searchBox").value.trim().toLowerCase();
+  const flaggedOnly = $("filterFlaggedOnly").checked;
+  const newOnly = $("filterNewOnly").checked;
 
-  const tbody = document.getElementById("tblBody");
+  const tbody = $("tblBody");
   tbody.innerHTML = "";
 
   const ids = Object.keys(allEntries);
-  document.getElementById("totalCounter").innerHTML = "<b>" + ids.length + "</b> مسجّل";
+  $("totalCounter").innerHTML = "<b>" + ids.length + "</b> مسجّل";
 
   let visibleCount = 0;
   const visibleIds = [];
 
-  // ترتيب حسب المنصب أولاً (إن وُجد)، ثم تاريخ الإضافة
-  const sortedIds = ids.sort((a, b) => {
-    
-    return (allEntries[a].createdAt||0) - (allEntries[b].createdAt||0);
-  });
+  const sortedIds = ids.sort((a, b) => (allEntries[a].createdAt || 0) - (allEntries[b].createdAt || 0));
 
   sortedIds.forEach((id) => {
     const e = allEntries[id];
-    const fullName = (e.name + " " + e.lastName).toLowerCase();
-    
+    const fullName = ((e.name || "") + " " + (e.lastName || "")).toLowerCase();
 
     if(search){
       const birthFormatted = e.birth ? formatDate(e.birth).toLowerCase() : "";
@@ -1098,17 +1221,15 @@ function renderTable(){
         birthRaw.includes(search);
       if(!matches) return;
     }
-    
-    if(flaggedOnly && !e.flagged){
-      return;
-    }
+
+    if(flaggedOnly && !e.flagged) return;
+    if(newOnly && e.experience !== "new") return;
 
     visibleCount++;
     visibleIds.push(id);
-    
 
     const flagNote = e.flagged
-      ? `<span class="flag-note">🚩 ${escapeHtml(e.issueType||"مشكلة")}</span>`
+      ? `<span class="flag-note">🚩 ${escapeHtml(e.issueType || "مشكلة")}</span>`
       : "";
 
     const missing = getMissingFields(e);
@@ -1116,60 +1237,76 @@ function renderTable(){
       ? `<span class="missing-icon" title="بيانات ناقصة: ${escapeHtml(missing.join('، '))}">❓</span>`
       : "";
 
+    const newBadge = e.experience === "new" ? `<span class="badge-new">🔵 جديد</span>` : "";
+
     const tr = document.createElement("tr");
-    if(e.flagged) tr.className = "flagged-row";
+    const classes = [];
+    if(e.experience === "new") classes.push("new-row");
+    if(e.flagged) classes.push("flagged-row"); // الأحمر له الأولوية (مُعرَّف لاحقًا في CSS)
+    tr.className = classes.join(" ");
+    tr.dataset.id = id;
     tr.innerHTML = `
-      <td><input type="checkbox" class="rowCheckbox" data-id="${id}" ${selectedIds.has(id) ? "checked" : ""}></td>
+      <td><input type="checkbox" class="rowCheckbox" data-id="${escapeHtml(id)}" ${selectedIds.has(id) ? "checked" : ""}></td>
       <td>
-        <span class="clickable-name" title="اضغط للتعديل" onclick="openEdit('${id}')">${escapeHtml(e.name)} ${escapeHtml(e.lastName)}</span>${missingIcon}${flagNote}
+        <span class="clickable-name" title="اضغط للتعديل" data-action="edit" data-id="${escapeHtml(id)}">${escapeHtml(e.name)} ${escapeHtml(e.lastName)}</span>${newBadge}${missingIcon}${flagNote}
       </td>
       <td>${e.birth ? formatDate(e.birth) : "—"}</td>
       <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
       <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
-      
       <td>${e.notes ? escapeHtml(e.notes) : "—"}</td>
       <td>
         <div class="row-actions">
-          
-          <button class="btn-flag btn-small ${e.flagged ? 'active' : ''}" onclick="openFlag('${id}')">🚩</button>
-          <button class="btn-danger btn-small" onclick="openDelete('${id}')">حذف</button>
+          <button class="btn-flag btn-small ${e.flagged ? 'active' : ''}" data-action="flag" data-id="${escapeHtml(id)}">🚩</button>
+          <button class="btn-danger btn-small" data-action="delete" data-id="${escapeHtml(id)}">حذف</button>
         </div>
       </td>
     `;
     tbody.appendChild(tr);
   });
 
-  document.getElementById("emptyState").style.display = visibleCount === 0 ? "block" : "none";
+  $("emptyState").style.display = visibleCount === 0 ? "block" : "none";
 
-  // إزالة أي تحديد لمؤطرين لم يعودوا موجودين (تم حذفهم من مكان آخر مثلاً)
+  // إزالة أي تحديد لمؤطرين لم يعودوا موجودين
   Array.from(selectedIds).forEach(id => { if(!allEntries[id]) selectedIds.delete(id); });
-
-  // ربط أحداث تحديد كل سطر
-  tbody.querySelectorAll(".rowCheckbox").forEach(cb => {
-    cb.addEventListener("change", function(){
-      const id = this.dataset.id;
-      if(this.checked) selectedIds.add(id); else selectedIds.delete(id);
-      updateBulkDeleteUI();
-    });
-  });
 
   updateSelectAllCheckboxState(visibleIds);
   updateBulkDeleteUI();
 }
 
+/* تفويض الأحداث على جسم الجدول (بدل onclick المضمّنة) */
+$("tblBody").addEventListener("click", function(ev){
+  const target = ev.target.closest("[data-action]");
+  if(!target) return;
+  const id = target.dataset.id;
+  const action = target.dataset.action;
+  if(action === "edit") openEdit(id);
+  else if(action === "flag") openFlag(id);
+  else if(action === "delete") requestDelete([id]);
+});
+
+$("tblBody").addEventListener("change", function(ev){
+  const cb = ev.target.closest(".rowCheckbox");
+  if(!cb) return;
+  const id = cb.dataset.id;
+  if(cb.checked) selectedIds.add(id); else selectedIds.delete(id);
+  const visibleIds = Array.from(document.querySelectorAll("#tblBody .rowCheckbox")).map(c => c.dataset.id);
+  updateSelectAllCheckboxState(visibleIds);
+  updateBulkDeleteUI();
+});
+
 /* ============================================================
-   تحديد جماعي وحذف دفعة واحدة
+   تحديد جماعي وحذف دفعة واحدة (حذف ناعم بسبب واحد)
    ============================================================ */
 function updateBulkDeleteUI(){
-  const btn = document.getElementById("btnBulkDelete");
-  const countEl = document.getElementById("bulkDeleteCount");
+  const btn = $("btnBulkDelete");
+  const countEl = $("bulkDeleteCount");
   if(!btn || !countEl) return;
   countEl.textContent = selectedIds.size;
   btn.disabled = selectedIds.size === 0;
 }
 
 function updateSelectAllCheckboxState(visibleIds){
-  const selectAll = document.getElementById("selectAllCheckbox");
+  const selectAll = $("selectAllCheckbox");
   if(!selectAll) return;
   if(visibleIds.length === 0){
     selectAll.checked = false;
@@ -1181,7 +1318,7 @@ function updateSelectAllCheckboxState(visibleIds){
   selectAll.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
 }
 
-document.getElementById("selectAllCheckbox").addEventListener("change", function(){
+$("selectAllCheckbox").addEventListener("change", function(){
   const visibleIds = Array.from(document.querySelectorAll("#tblBody .rowCheckbox")).map(cb => cb.dataset.id);
   if(this.checked){
     visibleIds.forEach(id => selectedIds.add(id));
@@ -1191,95 +1328,94 @@ document.getElementById("selectAllCheckbox").addEventListener("change", function
   renderTable();
 });
 
-document.getElementById("btnBulkDelete").addEventListener("click", () => {
+$("btnBulkDelete").addEventListener("click", async () => {
   if(selectedIds.size === 0) return;
-  const count = selectedIds.size;
-  const ok = confirm("هل أنت متأكد من حذف " + count + " مؤطر دفعة واحدة؟ لا يمكن التراجع عن هذا الإجراء.");
-  if(!ok) return;
-
-  const btn = document.getElementById("btnBulkDelete");
+  const btn = $("btnBulkDelete");
   btn.disabled = true;
-  btn.textContent = "جارٍ الحذف...";
-
-  const ids = Array.from(selectedIds);
-  Promise.all(ids.map(id => moatirineRef.child(id).remove().catch(err => {
-    console.error("فشل حذف مؤطر:", id, err);
-  }))).then(() => {
-    selectedIds.clear();
-    updateBulkDeleteUI();
-    btn.innerHTML = '🗑 حذف المحدّدين (<span id="bulkDeleteCount">0</span>)';
-  });
+  await requestDelete(Array.from(selectedIds));
+  updateBulkDeleteUI();
 });
 
 function formatDate(d){
-  const parts = d.split("-");
+  const parts = String(d).split("-");
   if(parts.length !== 3) return d;
   return parts[2] + "/" + parts[1] + "/" + parts[0];
 }
 
 function escapeHtml(str){
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-document.getElementById("searchBox").addEventListener("input", renderTable);
-
-document.getElementById("filterFlaggedOnly").addEventListener("change", renderTable);
+$("searchBox").addEventListener("input", renderTable);
+$("filterFlaggedOnly").addEventListener("change", renderTable);
+$("filterNewOnly").addEventListener("change", renderTable);
 
 /* ---------------- التعديل ---------------- */
 function openEdit(id){
   const e = allEntries[id];
   if(!e) return;
   editTargetId = id;
-  document.getElementById("eFullName").value = ((e.name || "") + " " + (e.lastName || "")).trim();
-  document.getElementById("eBirth").value = e.birth ? formatDate(e.birth) : "";
-  document.getElementById("eElectoralNum").value = e.electoralNum || "";
-  document.getElementById("ePhone").value = e.phone || "";
-  document.getElementById("eEducation").value = e.educationLevel || "بدون مستوى";
-  document.getElementById("eNotes").value = e.notes || "";
-  document.getElementById("editModal").classList.add("show");
+  $("eFullName").value = ((e.name || "") + " " + (e.lastName || "")).trim();
+  $("eBirth").value = e.birth ? formatDate(e.birth) : "";
+  $("eElectoralNum").value = e.electoralNum || "";
+  $("ePhone").value = e.phone || "";
+  $("eEducation").value = e.educationLevel || "";
+  $("eExperience").value = e.experience || "";
+  $("eNotes").value = e.notes || "";
+  $("editModal").classList.add("show");
 }
 
-document.getElementById("btnCancelEdit").addEventListener("click", () => {
-  document.getElementById("editModal").classList.remove("show");
+$("btnCancelEdit").addEventListener("click", () => {
+  $("editModal").classList.remove("show");
   editTargetId = null;
 });
 
-document.getElementById("btnSaveEdit").addEventListener("click", () => {
+$("btnSaveEdit").addEventListener("click", async () => {
   if(!editTargetId) return;
 
-  const eFullName = document.getElementById("eFullName").value.trim();
+  const eFullName = $("eFullName").value.trim();
   const eNameParts = eFullName.split(/\s+/).filter(Boolean);
   const name = eNameParts[0] || "";
   const lastName = eNameParts.slice(1).join(" ");
-  const electoralNum = document.getElementById("eElectoralNum").value.trim() || null;
+  const electoralNum = $("eElectoralNum").value.trim() || null;
 
   if(!eFullName){
-    alert("الاسم واللقب إلزاميان.");
+    showToast("الاسم واللقب إلزاميان.", "err");
     return;
   }
 
-  // فحص التكرار عند التعديل أيضاً (باستثناء المؤطر نفسه)
-  if(!confirmIfDuplicates(name, lastName, electoralNum, editTargetId)){
-    return;
-  }
+  const btn = $("btnSaveEdit");
+  btn.disabled = true;
+  try{
+    if(!(await confirmIfDuplicates(name, lastName, electoralNum, editTargetId))){
+      return;
+    }
 
-  const updated = {
-    name,
-    lastName,
-    birth: birthDisplayToISO(document.getElementById("eBirth").value),
-    electoralNum,
-    phone: document.getElementById("ePhone").value.trim() || null,
-    educationLevel: document.getElementById("eEducation").value,
-    notes: document.getElementById("eNotes").value.trim() || null
-  };
-  moatirineRef.child(editTargetId).update(updated)
-    .then(() => {
-      document.getElementById("editModal").classList.remove("show");
-      editTargetId = null;
-    })
-    .catch((err) => alert("خطأ أثناء التعديل: " + err.message));
+    const updated = {
+      name,
+      lastName,
+      birth: birthDisplayToISO($("eBirth").value),
+      electoralNum,
+      phone: $("ePhone").value.trim() || null,
+      educationLevel: $("eEducation").value || null,
+      experience: $("eExperience").value || null,
+      notes: $("eNotes").value.trim() || null
+    };
+    await moatirineRef.update(editTargetId, updated);
+    $("editModal").classList.remove("show");
+    editTargetId = null;
+    showToast("تم حفظ التعديل ✅", "ok");
+  }catch(err){
+    console.error("خطأ أثناء التعديل:", err);
+    showToast("خطأ أثناء التعديل: " + err.message, "err");
+  }finally{
+    btn.disabled = false;
+  }
 });
 
 /* ---------------- الإشارة / تمييز المؤطر بمشكلة ---------------- */
@@ -1287,60 +1423,43 @@ function openFlag(id){
   const e = allEntries[id];
   if(!e) return;
   flagTargetId = id;
-  document.getElementById("flagMoatirName").textContent = e.name + " " + e.lastName;
-  document.getElementById("flagIssueType").value = e.issueType || "";
-  document.getElementById("flagModal").classList.add("show");
+  $("flagMoatirName").textContent = e.name + " " + (e.lastName || "");
+  $("flagIssueType").value = e.issueType || "";
+  $("flagModal").classList.add("show");
 }
 
-document.getElementById("btnCancelFlag").addEventListener("click", () => {
-  document.getElementById("flagModal").classList.remove("show");
+$("btnCancelFlag").addEventListener("click", () => {
+  $("flagModal").classList.remove("show");
   flagTargetId = null;
 });
 
-document.getElementById("btnSaveFlag").addEventListener("click", () => {
+$("btnSaveFlag").addEventListener("click", async () => {
   if(!flagTargetId) return;
-  const issueType = document.getElementById("flagIssueType").value.trim();
+  const issueType = $("flagIssueType").value.trim();
   if(!issueType){
-    alert("يرجى تحديد نوع المشكلة.");
+    showToast("يرجى تحديد نوع المشكلة.", "err");
     return;
   }
-  moatirineRef.child(flagTargetId).update({ flagged: true, issueType, issueReason: null })
-    .then(() => {
-      document.getElementById("flagModal").classList.remove("show");
-      flagTargetId = null;
-    })
-    .catch((err) => alert("خطأ: " + err.message));
+  try{
+    await moatirineRef.update(flagTargetId, { flagged: true, issueType, issueReason: null });
+    $("flagModal").classList.remove("show");
+    flagTargetId = null;
+    showToast("تم وضع الإشارة 🚩", "ok");
+  }catch(err){
+    showToast("خطأ: " + err.message, "err");
+  }
 });
 
-document.getElementById("btnRemoveFlag").addEventListener("click", () => {
+$("btnRemoveFlag").addEventListener("click", async () => {
   if(!flagTargetId) return;
-  moatirineRef.child(flagTargetId).update({ flagged: false, issueType: null, issueReason: null })
-    .then(() => {
-      document.getElementById("flagModal").classList.remove("show");
-      flagTargetId = null;
-    })
-    .catch((err) => alert("خطأ: " + err.message));
-});
-
-/* ---------------- الحذف ---------------- */
-function openDelete(id){
-  deleteTargetId = id;
-  document.getElementById("deleteModal").classList.add("show");
-}
-
-document.getElementById("btnCancelDelete").addEventListener("click", () => {
-  document.getElementById("deleteModal").classList.remove("show");
-  deleteTargetId = null;
-});
-
-document.getElementById("btnConfirmDelete").addEventListener("click", () => {
-  if(!deleteTargetId) return;
-  moatirineRef.child(deleteTargetId).remove()
-    .then(() => {
-      document.getElementById("deleteModal").classList.remove("show");
-      deleteTargetId = null;
-    })
-    .catch((err) => alert("خطأ أثناء الحذف: " + err.message));
+  try{
+    await moatirineRef.update(flagTargetId, { flagged: false, issueType: null, issueReason: null });
+    $("flagModal").classList.remove("show");
+    flagTargetId = null;
+    showToast("تمت إزالة الإشارة", "ok");
+  }catch(err){
+    showToast("خطأ: " + err.message, "err");
+  }
 });
 
 /* ============================================================
@@ -1351,9 +1470,8 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
     document.querySelectorAll(".tab-section").forEach(s => s.classList.remove("active"));
     btn.classList.add("active");
-    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    $("tab-" + btn.dataset.tab).classList.add("active");
     try{
-      
       if(btn.dataset.tab === "duplicates") renderDuplicates();
     }catch(err){
       console.error("خطأ عند فتح التبويب:", err);
@@ -1361,8 +1479,6 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     }
   });
 });
-
-
 
 /* ============================================================
    التسجيلات المتشابهة
@@ -1374,7 +1490,7 @@ function computeDuplicateGroups(){
 
   Object.keys(allEntries).forEach(id => {
     const e = allEntries[id];
-    const nameKey = (e.name + " " + e.lastName).trim().toLowerCase();
+    const nameKey = ((e.name || "") + " " + (e.lastName || "")).trim().toLowerCase();
     if(nameKey){ (byName[nameKey] = byName[nameKey] || []).push(id); }
     if(e.electoralNum){ (byElectoral[e.electoralNum] = byElectoral[e.electoralNum] || []).push(id); }
     if(e.birth){ (byBirth[e.birth] = byBirth[e.birth] || []).push(id); }
@@ -1396,17 +1512,10 @@ function computeDuplicateGroups(){
 
 function updateDuplicatesBadge(){
   const groups = computeDuplicateGroups();
-  const badge = document.getElementById("dupTabCounter");
+  const badge = $("dupTabCounter");
   if(badge) badge.innerHTML = "<b>" + groups.length + "</b>";
 }
 
-/* تحديد/إلغاء تحديد مؤطر مكرر من داخل تبويب التسجيلات المتشابهة */
-function toggleDupSelect(id, checked){
-  if(checked) dupSelectedIds.add(id); else dupSelectedIds.delete(id);
-  updateDupGroupCounters();
-}
-
-/* تحديث عدّاد "المحدّدين" وتفعيل/تعطيل أزرار الحذف داخل كل مجموعة */
 function updateDupGroupCounters(){
   document.querySelectorAll(".dup-group").forEach(groupEl => {
     const ids = (groupEl.dataset.ids || "").split(",").filter(Boolean);
@@ -1418,55 +1527,13 @@ function updateDupGroupCounters(){
   });
 }
 
-let dupDeleteTargetIds = [];
-
-function openDupDeleteConfirm(ids){
-  if(!ids || ids.length === 0) return;
-  dupDeleteTargetIds = ids;
-  const names = ids.map(id => {
-    const e = allEntries[id];
-    return e ? (e.name + " " + e.lastName) : "";
-  }).filter(Boolean).join("، ");
-  document.getElementById("dupDeleteMsg").textContent =
-    "هل أنت متأكد من حذف " + ids.length + " مؤطر (" + names + ")؟ لا يمكن التراجع عن هذا الإجراء.";
-  document.getElementById("dupDeleteModal").classList.add("show");
-}
-
-document.getElementById("btnCancelDupDelete").addEventListener("click", () => {
-  document.getElementById("dupDeleteModal").classList.remove("show");
-  dupDeleteTargetIds = [];
-});
-
-document.getElementById("btnConfirmDupDelete").addEventListener("click", () => {
-  if(dupDeleteTargetIds.length === 0) return;
-  const btn = document.getElementById("btnConfirmDupDelete");
-  btn.disabled = true;
-  btn.textContent = "جارٍ الحذف...";
-
-  Promise.all(dupDeleteTargetIds.map(id => moatirineRef.child(id).remove().catch(err => {
-    console.error("فشل حذف مؤطر مكرر:", id, err);
-  }))).then(() => {
-    dupDeleteTargetIds.forEach(id => dupSelectedIds.delete(id));
-    document.getElementById("dupDeleteModal").classList.remove("show");
-    dupDeleteTargetIds = [];
-    btn.disabled = false;
-    btn.textContent = "حذف نهائي";
-  });
-});
-
-/* حذف مباشر لمؤطر واحد بالضغط على أيقونة 🚩 بجانبه داخل مجموعة التشابه */
-function quickDeleteDuplicate(id){
-  openDupDeleteConfirm([id]);
-}
-
 function renderDuplicates(){
-  const container = document.getElementById("duplicatesContent");
+  const container = $("duplicatesContent");
   const groups = computeDuplicateGroups();
 
-  document.getElementById("dupCountBadge").textContent = groups.length + " حالة";
+  $("dupCountBadge").textContent = groups.length + " حالة";
   updateDuplicatesBadge();
 
-  // تنظيف التحديد من مؤطرين لم يعودوا موجودين
   Array.from(dupSelectedIds).forEach(id => { if(!allEntries[id]) dupSelectedIds.delete(id); });
 
   if(groups.length === 0){
@@ -1474,31 +1541,31 @@ function renderDuplicates(){
     return;
   }
 
-  container.innerHTML = groups.map((g, gIndex) => {
-    const groupId = "dupgrp" + gIndex;
+  container.innerHTML = groups.map((g) => {
     const rows = g.ids.map(id => {
       const e = allEntries[id];
       if(!e) return "";
       const checked = dupSelectedIds.has(id) ? "checked" : "";
+      const newBadge = e.experience === "new" ? `<span class="badge-new">🔵 جديد</span>` : "";
       return `<tr>
-        <td class="dup-select-cell"><input type="checkbox" class="dupRowCheckbox" data-id="${id}" data-group="${groupId}" ${checked} title="تحديد للحذف"></td>
-        <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}</td>
+        <td class="dup-select-cell"><input type="checkbox" class="dupRowCheckbox" data-id="${escapeHtml(id)}" ${checked} title="تحديد للحذف"></td>
+        <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}${newBadge}</td>
         <td>${e.birth ? formatDate(e.birth) : "—"}</td>
         <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
         <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
         <td>
           <div class="row-actions">
-            <button class="btn-secondary btn-small" onclick="document.querySelector('.tab-btn[data-tab=register]').click(); setTimeout(()=>openEdit('${id}'), 50);">تعديل</button>
-            <button class="btn-flag btn-small" title="حذف هذا المؤطر مباشرة" onclick="quickDeleteDuplicate('${id}')">🚩 حذف</button>
+            <button class="btn-secondary btn-small" data-action="dup-edit" data-id="${escapeHtml(id)}">تعديل</button>
+            <button class="btn-flag btn-small" title="حذف هذا المؤطر" data-action="dup-delete" data-id="${escapeHtml(id)}">🚩 حذف</button>
           </div>
         </td>
       </tr>`;
     }).join("");
 
-    return `<div class="dup-group" data-ids="${g.ids.join(',')}">
+    return `<div class="dup-group" data-ids="${g.ids.map(escapeHtml).join(',')}">
       <div class="dup-group-header">
         <span>${g.ids.length} مؤطرين متطابقين</span>
-        <span class="dup-tag">${g.reason}</span>
+        <span class="dup-tag">${escapeHtml(g.reason)}</span>
       </div>
       <div class="table-wrap" style="border:none; border-radius:0;">
         <table>
@@ -1508,22 +1575,41 @@ function renderDuplicates(){
       </div>
       <div class="dup-group-footer">
         <span class="dup-sel-count">0 محدّد</span>
-        <button type="button" class="btn-danger btn-small dup-group-delete-btn" disabled onclick="openDupDeleteConfirm(Array.from(dupSelectedIds).filter(id => '${g.ids.join(',')}'.split(',').includes(id)))">🗑 حذف المحدّدين من هذه المجموعة</button>
+        <button type="button" class="btn-danger btn-small dup-group-delete-btn" disabled>🗑 حذف المحدّدين من هذه المجموعة</button>
       </div>
     </div>`;
   }).join("");
 
-  // ربط أحداث خانات التحديد داخل كل مجموعة
-  container.querySelectorAll(".dupRowCheckbox").forEach(cb => {
-    cb.addEventListener("change", function(){
-      toggleDupSelect(this.dataset.id, this.checked);
-    });
-  });
-
   updateDupGroupCounters();
 }
 
+/* تفويض أحداث تبويب المتشابهة */
+$("duplicatesContent").addEventListener("change", function(ev){
+  const cb = ev.target.closest(".dupRowCheckbox");
+  if(!cb) return;
+  if(cb.checked) dupSelectedIds.add(cb.dataset.id); else dupSelectedIds.delete(cb.dataset.id);
+  updateDupGroupCounters();
+});
 
+$("duplicatesContent").addEventListener("click", function(ev){
+  const actionEl = ev.target.closest("[data-action]");
+  if(actionEl){
+    const id = actionEl.dataset.id;
+    if(actionEl.dataset.action === "dup-edit"){
+      document.querySelector('.tab-btn[data-tab="register"]').click();
+      setTimeout(() => openEdit(id), 50);
+    } else if(actionEl.dataset.action === "dup-delete"){
+      requestDelete([id]);
+    }
+    return;
+  }
+  const delBtn = ev.target.closest(".dup-group-delete-btn");
+  if(delBtn){
+    const groupEl = delBtn.closest(".dup-group");
+    const ids = (groupEl.dataset.ids || "").split(",").filter(id => dupSelectedIds.has(id));
+    requestDelete(ids);
+  }
+});
 </script>
 
 </body>

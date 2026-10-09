@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// ⚠️ تنبيه: لا توجد مصادقة (قرار المشروع). أي شخص يملك رابط الصفحة يستطيع القراءة والإضافة والتعديل.
+// الحذف الفعلي ممنوع تمامًا من صفحة الأعضاء (الحذف يتم "ناعمًا" عبر الحقل deleted).
+// منصة المدير ستحتاج لاحقًا آلية منفصلة للحذف النهائي.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function okStr(v, maxLen) {
+      return v == null || (v is string && v.size() <= maxLen);
+    }
+
+    function validEntry() {
+      let d = request.resource.data;
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 100
+        && d.lastName is string && d.lastName.size() <= 200
+        && okStr(d.get('birth', null), 10)
+        && okStr(d.get('electoralNum', null), 50)
+        && okStr(d.get('phone', null), 30)
+        && okStr(d.get('educationLevel', null), 30)
+        && okStr(d.get('notes', null), 1000)
+        && d.get('experience', null) in [null, 'new', 'previous']
+        && d.get('flagged', false) is bool
+        && okStr(d.get('issueType', null), 200)
+        && d.get('deleted', false) is bool
+        && okStr(d.get('deleteReason', null), 500)
+        && okStr(d.get('clientId', null), 100)
+        && okStr(d.get('deletedByClient', null), 100);
+    }
+
+    match /مؤطرين/{docId} {
+      allow read: if true;
+      allow create: if validEntry();
+      allow update: if validEntry();
+      allow delete: if false;
+    }
+
+    // منع أي مجموعة أخرى
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
