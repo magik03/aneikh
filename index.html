@@ -36,7 +36,7 @@
   createdAt        : وقت الإنشاء (ms)
   updatedAt        : وقت آخر تعديل (ms)
   clientId         : معرّف الجهاز الذي أنشأ السجل
-  assignLevel, center, centerPosition, officeNumber, officeType, officePosition : حقول محجوزة (null)
+  assignLevel, center, centerPosition, officeNumber, officeType, officePosition : حقول التوزيع (يحدّدها الأدمن فقط، وتُعرض هنا للاطلاع)
 ============================================================
 -->
 
@@ -234,6 +234,15 @@
   .prev-note{
     display:block; margin-top:3px; font-size:11px; color:var(--muted); font-weight:600;
     white-space:normal;
+  }
+
+  .pos-badge{
+    display:inline-block;
+    padding:3px 10px;
+    border-radius:20px;
+    font-size:11.5px;
+    font-weight:700;
+    white-space:nowrap;
   }
 
   tbody tr.flagged-row{background:rgba(239,68,68,0.08);}
@@ -518,6 +527,8 @@
 
   <div class="tabs">
     <button class="tab-btn active" data-tab="register">📝 تسجيل المؤطرين</button>
+    <button class="tab-btn" data-tab="all">📋 كل المؤطرين <span class="counter" id="allTabCounter" style="margin-inline-start:4px; padding:2px 8px;"><b>0</b></span></button>
+    <button class="tab-btn" data-tab="newcomers">🔵 المؤطرون الجدد <span class="counter" id="newTabCounter" style="margin-inline-start:4px; padding:2px 8px;"><b>0</b></span></button>
     <button class="tab-btn" data-tab="duplicates">🧬 التسجيلات المتشابهة <span class="counter" id="dupTabCounter" style="margin-inline-start:4px; padding:2px 8px;"><b>0</b></span></button>
   </div>
 
@@ -632,6 +643,80 @@
   </div>
 
   </div><!-- /tab-register -->
+
+  <!-- ============ كل المؤطرين (عرض كامل كما في الأدمن، للاطلاع فقط) ============ -->
+  <div class="tab-section" id="tab-all">
+    <div class="card">
+      <h2>
+        كل المؤطرين
+        <span class="counter" id="allCounter"><b>0</b> مؤطر</span>
+      </h2>
+      <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
+        عرض كامل لجميع المؤطرين بكل بياناتهم كما تظهر في لوحة الأدمن، بما فيها المنصب والتوزيع (للاطلاع فقط).
+      </p>
+      <div class="toolbar">
+        <input type="text" id="allSearch" placeholder="بحث بالاسم، اسم الأب، الرقم الانتخابي، الهاتف، المنصب أو المركز...">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>الاسم واللقب</th>
+              <th>اسم الأب</th>
+              <th>تاريخ الميلاد</th>
+              <th>الرقم الانتخابي</th>
+              <th>الهاتف</th>
+              <th>المنصب</th>
+              <th>التوزيع</th>
+              <th>ملاحظات</th>
+            </tr>
+          </thead>
+          <tbody id="allBody"></tbody>
+        </table>
+        <div class="empty-state" id="allEmpty" style="display:none;">
+          <div class="icon">📋</div>
+          <div>لا يوجد مؤطرون مطابقون</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ المؤطرون الجدد ============ -->
+  <div class="tab-section" id="tab-newcomers">
+    <div class="card">
+      <h2>
+        المؤطرون الجدد 🔵
+        <span class="counter" id="newCounter"><b>0</b> مؤطر</span>
+      </h2>
+      <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
+        المؤطرون المسجَّلون كـ«جدد» (غير مسجّلين في قوائمنا سابقًا)، بكل بياناتهم كما تظهر في لوحة الأدمن (للاطلاع فقط).
+      </p>
+      <div class="toolbar">
+        <input type="text" id="newSearch" placeholder="بحث بالاسم، اسم الأب، الرقم الانتخابي، الهاتف، المنصب أو المركز...">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>الاسم واللقب</th>
+              <th>اسم الأب</th>
+              <th>تاريخ الميلاد</th>
+              <th>الرقم الانتخابي</th>
+              <th>الهاتف</th>
+              <th>المنصب</th>
+              <th>التوزيع</th>
+              <th>ملاحظات</th>
+            </tr>
+          </thead>
+          <tbody id="newBody"></tbody>
+        </table>
+        <div class="empty-state" id="newEmpty" style="display:none;">
+          <div class="icon">🔵</div>
+          <div>لا يوجد مؤطرون جدد مطابقون</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="tab-section" id="tab-duplicates">
     <div class="card">
@@ -812,6 +897,52 @@ const CLIENT_ID = (function(){
   }
 })();
 
+/* ---------------- أسماء المراكز (لعرض التوزيع فقط) ---------------- */
+const CENTER_NAMES = {
+  "01": "متقنة عمر إدريس",
+  "02": "مريقي محمد",
+  "03": "طنجاوي الحاج",
+  "04": "قديم عطالله",
+  "05": "شوشة السايح"
+};
+
+const POSITION_COLORS = {
+  "رئيس المركز": "#ef4444",
+  "مساعد المركز الأول": "#f97316",
+  "مساعد المركز الثاني": "#f97316",
+  "مساعد المركز الثالث": "#f97316",
+  "مساعد المركز الرابع": "#f97316",
+  "رئيس مكتب": "#16a34a",
+  "نائب رئيس مكتب": "#22c55e",
+  "كاتب": "#22c55e",
+  "مساعد أول": "#f59e0b",
+  "مساعد ثاني": "#f59e0b",
+  "إضافي أول": "#a78bfa"
+};
+
+function centerLabel(code){
+  if(!code) return "";
+  return "مركز " + (CENTER_NAMES[code] || code);
+}
+
+/* منصب المؤطر الحالي (مركز أو مكتب) كما يحدّده الأدمن */
+function getEntryPosition(e){
+  if(e.assignLevel === "center") return e.centerPosition || null;
+  if(e.assignLevel === "office") return e.officePosition || null;
+  return null;
+}
+
+/* نص التوزيع كما يظهر في الأدمن */
+function distributionText(e){
+  if(e.assignLevel === "office" && e.center){
+    return centerLabel(e.center) + " - مكتب " + (e.officeNumber || "") + " (" + (e.officeType || "") + ")";
+  }
+  if(e.assignLevel === "center" && e.center){
+    return centerLabel(e.center) + " - طاقم المركز";
+  }
+  return "";
+}
+
 const moatirineRef = {
   on(event, cb){
     if(event === "value"){
@@ -988,6 +1119,12 @@ moatirineRef.on("value", (snapshot) => {
   }catch(err){
     console.error("خطأ في renderTable:", err);
     showPageError("خطأ أثناء عرض قائمة المؤطرين: " + err.message);
+  }
+  try{
+    renderReadonlyLists();
+  }catch(err){
+    console.error("خطأ في عرض القوائم الكاملة:", err);
+    showPageError("خطأ أثناء عرض القوائم الكاملة: " + err.message);
   }
   try{
     if($("tab-duplicates").classList.contains("active")) renderDuplicates();
@@ -1390,6 +1527,96 @@ $("searchBox").addEventListener("input", renderTable);
 $("filterFlaggedOnly").addEventListener("change", renderTable);
 $("filterNewOnly").addEventListener("change", renderTable);
 
+/* ============================================================
+   القوائم الكاملة للاطلاع: "كل المؤطرين" و"المؤطرون الجدد"
+   تعرض نفس بيانات الأدمن (بما فيها المنصب والتوزيع)
+   ============================================================ */
+function renderReadonlyList(cfg){
+  const search = $(cfg.searchId).value.trim().toLowerCase();
+  const tbody = $(cfg.bodyId);
+  tbody.innerHTML = "";
+
+  const baseIds = Object.keys(allEntries)
+    .filter(id => !cfg.onlyNew || allEntries[id].experience === "new")
+    .sort((a, b) => (allEntries[a].createdAt || 0) - (allEntries[b].createdAt || 0));
+
+  let shown = 0;
+  baseIds.forEach(id => {
+    const e = allEntries[id];
+    const currentPos = getEntryPosition(e) || "";
+    const distTxt = distributionText(e);
+
+    if(search){
+      const hay = [
+        (e.name || "") + " " + (e.lastName || ""),
+        e.fatherName || "",
+        e.electoralNum || "",
+        e.phone || "",
+        e.birth ? formatDate(e.birth) : "",
+        e.birth || "",
+        currentPos,
+        distTxt,
+        e.notes || ""
+      ].join(" ").toLowerCase();
+      if(!hay.includes(search)) return;
+    }
+
+    shown++;
+    const color = POSITION_COLORS[currentPos] || "#16a34a";
+    const positionTxt = currentPos
+      ? `<span class="pos-badge" style="background:${color}22; color:${color}; border:1px solid ${color}55;">${escapeHtml(currentPos)}</span>`
+      : '<span style="color:var(--muted); font-size:12px;">بدون توزيع</span>';
+    const distHtml = distTxt ? escapeHtml(distTxt) : '<span style="color:var(--muted);">غير موزّع</span>';
+
+    const newBadge = e.experience === "new" ? `<span class="badge-new">🔵 جديد</span>` : "";
+    const prevNote = (e.experience === "previous")
+      ? `<span class="prev-note">غير جديد${e.previousRole ? " — وظيفته سابقًا: " + escapeHtml(e.previousRole) : ""}</span>`
+      : "";
+    const flagNote = e.flagged
+      ? `<span class="flag-note">🚩 ${escapeHtml(e.issueType || "مشكلة")}</span>`
+      : "";
+    const missing = getMissingFields(e);
+    const missingIcon = missing.length
+      ? `<span class="missing-icon" title="بيانات ناقصة: ${escapeHtml(missing.join('، '))}">❓</span>`
+      : "";
+
+    const tr = document.createElement("tr");
+    const classes = [];
+    if(e.experience === "new") classes.push("new-row");
+    if(e.flagged) classes.push("flagged-row");
+    tr.className = classes.join(" ");
+    tr.innerHTML = `
+      <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}${newBadge}${missingIcon}${prevNote}${flagNote}</td>
+      <td>${e.fatherName ? escapeHtml(e.fatherName) : "—"}</td>
+      <td>${e.birth ? formatDate(e.birth) : "—"}</td>
+      <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
+      <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
+      <td>${positionTxt}</td>
+      <td>${distHtml}</td>
+      <td>${e.notes ? escapeHtml(e.notes) : "—"}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  $(cfg.emptyId).style.display = shown === 0 ? "block" : "none";
+  $(cfg.counterId).innerHTML = "<b>" + baseIds.length + "</b> مؤطر";
+  $(cfg.tabCounterId).innerHTML = "<b>" + baseIds.length + "</b>";
+}
+
+function renderReadonlyLists(){
+  renderReadonlyList({
+    searchId: "allSearch", bodyId: "allBody", emptyId: "allEmpty",
+    counterId: "allCounter", tabCounterId: "allTabCounter", onlyNew: false
+  });
+  renderReadonlyList({
+    searchId: "newSearch", bodyId: "newBody", emptyId: "newEmpty",
+    counterId: "newCounter", tabCounterId: "newTabCounter", onlyNew: true
+  });
+}
+
+$("allSearch").addEventListener("input", renderReadonlyLists);
+$("newSearch").addEventListener("input", renderReadonlyLists);
+
 /* ---------------- التعديل ---------------- */
 function openEdit(id){
   const e = allEntries[id];
@@ -1546,6 +1773,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     $("tab-" + btn.dataset.tab).classList.add("active");
     try{
       if(btn.dataset.tab === "duplicates") renderDuplicates();
+      if(btn.dataset.tab === "all" || btn.dataset.tab === "newcomers") renderReadonlyLists();
     }catch(err){
       console.error("خطأ عند فتح التبويب:", err);
       showPageError("خطأ أثناء فتح هذا التبويب: " + err.message);
