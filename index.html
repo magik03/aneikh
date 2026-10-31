@@ -36,6 +36,7 @@
   createdAt        : وقت الإنشاء (ms)
   updatedAt        : وقت آخر تعديل (ms)
   clientId         : معرّف الجهاز الذي أنشأ السجل
+  (مجموعة منفصلة "قوالب_الرسائل": name, text, createdAt — قوالب رسائل SMS)
   assignLevel, center, centerPosition, officeNumber, officeType, officePosition : حقول التوزيع (يحدّدها الأدمن فقط، وتُعرض هنا للاطلاع)
 ============================================================
 -->
@@ -443,6 +444,20 @@
     background:rgba(245,158,11,0.2); color:#b45309;
   }
   .dup-select-cell{width:34px; text-align:center;}
+  .sms-item{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 12px; border-bottom:1px solid #e4ece7; cursor:pointer;
+  }
+  .sms-item:last-child{border-bottom:none;}
+  .sms-item input{width:auto; padding:0;}
+  .sms-item.disabled{opacity:.5; cursor:not-allowed;}
+  .sms-item .sms-tag{font-size:11px; color:var(--muted); margin-inline-start:auto; white-space:nowrap;}
+  .sms-item .sms-tag.ok{color:#15803d; font-weight:700;}
+  #smsList{border:1px solid var(--border); border-radius:12px; max-height:340px; overflow-y:auto; background:#fff;}
+  .sms-preview{
+    background:#f0f7f2; border:1px solid var(--border); border-radius:12px;
+    padding:14px; white-space:pre-wrap; line-height:1.9; font-size:14px;
+  }
   .dup-group-footer{
     display:flex; justify-content:flex-end; align-items:center; gap:10px;
     padding:10px 16px; border-top:1px solid rgba(245,158,11,0.25);
@@ -507,16 +522,6 @@
         <div class="stat-value" id="statTotal">0</div>
         <div class="stat-label">إجمالي المؤطرين</div>
       </div>
-      <div class="stat-card" style="background:linear-gradient(135deg, rgba(37,99,235,0.12), rgba(37,99,235,0.05)); border:1px solid rgba(37,99,235,0.25);">
-        <div class="stat-icon">🔵</div>
-        <div class="stat-value" style="color:var(--blue);" id="statNew">0</div>
-        <div class="stat-label">مؤطرون جدد</div>
-      </div>
-      <div class="stat-card" style="background:linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05)); border:1px solid rgba(34,197,94,0.2);">
-        <div class="stat-icon">🔁</div>
-        <div class="stat-value" id="statPrev">0</div>
-        <div class="stat-label">غير جدد (سابقون)</div>
-      </div>
       <div class="stat-card" style="background:linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05)); border:1px solid rgba(239,68,68,0.2);">
         <div class="stat-icon">🚩</div>
         <div class="stat-value" style="color:var(--danger);" id="statFlagged">0</div>
@@ -528,7 +533,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="register">📝 تسجيل المؤطرين</button>
     <button class="tab-btn" data-tab="all">📋 كل المؤطرين <span class="counter" id="allTabCounter" style="margin-inline-start:4px; padding:2px 8px;"><b>0</b></span></button>
-    <button class="tab-btn" data-tab="newcomers">🔵 المؤطرون الجدد <span class="counter" id="newTabCounter" style="margin-inline-start:4px; padding:2px 8px;"><b>0</b></span></button>
+    <button class="tab-btn" data-tab="sms">📩 إرسال رسائل</button>
     <button class="tab-btn" data-tab="duplicates">🧬 التسجيلات المتشابهة <span class="counter" id="dupTabCounter" style="margin-inline-start:4px; padding:2px 8px;"><b>0</b></span></button>
   </div>
 
@@ -681,39 +686,61 @@
     </div>
   </div>
 
-  <!-- ============ المؤطرون الجدد ============ -->
-  <div class="tab-section" id="tab-newcomers">
+  <!-- ============ إرسال رسائل SMS ============ -->
+  <div class="tab-section" id="tab-sms">
     <div class="card">
-      <h2>
-        المؤطرون الجدد 🔵
-        <span class="counter" id="newCounter"><b>0</b> مؤطر</span>
-      </h2>
-      <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
-        المؤطرون المسجَّلون كـ«جدد» (غير مسجّلين في قوائمنا سابقًا)، بكل بياناتهم كما تظهر في لوحة الأدمن (للاطلاع فقط).
+      <h2>📩 إرسال رسائل SMS <span class="badge">من هاتفك</span></h2>
+      <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px; line-height:1.8;">
+        افتح هذه الصفحة من هاتفك. اختر قالبًا أو اكتب رسالة، حدّد المؤطرين، ثم اضغط «ابدأ الإرسال». تفتح لك الرسالة جاهزة لكل مؤطر على حدة (دون إظهار رقمه)، وتضغط «إرسال» في تطبيق الرسائل ثم ترجع وتضغط «التالي».
       </p>
-      <div class="toolbar">
-        <input type="text" id="newSearch" placeholder="بحث بالاسم، اسم الأب، الرقم الانتخابي، الهاتف، المنصب أو المركز...">
+
+      <div class="field" style="margin-bottom:12px;">
+        <label>القالب (نوع الرسالة)</label>
+        <select id="smsTemplateSelect"><option value="">✍️ رسالة جديدة (كتابة يدوية)</option></select>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>الاسم واللقب</th>
-              <th>اسم الأب</th>
-              <th>تاريخ الميلاد</th>
-              <th>الرقم الانتخابي</th>
-              <th>الهاتف</th>
-              <th>المنصب</th>
-              <th>التوزيع</th>
-              <th>ملاحظات</th>
-            </tr>
-          </thead>
-          <tbody id="newBody"></tbody>
-        </table>
-        <div class="empty-state" id="newEmpty" style="display:none;">
-          <div class="icon">🔵</div>
-          <div>لا يوجد مؤطرون جدد مطابقون</div>
-        </div>
+      <div class="field" style="margin-bottom:10px;">
+        <label>نص الرسالة</label>
+        <textarea id="smsText" rows="5" placeholder="مثال: السلام عليكم {الاسم}، تاريخ ميلادك {الميلاد} ورقمك الانتخابي {الرقم_الانتخابي}. المرجو الحضور يوم..."></textarea>
+      </div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">اضغط لإدراج بيانات المؤطر في الرسالة (تُستبدل تلقائيًا لكل مؤطر؛ وإن لم تتوفر تظهر «—»):</div>
+      <div class="actions" style="margin-top:0; margin-bottom:14px;">
+        <button type="button" class="btn-secondary btn-small" data-ins="{الاسم}">+ الاسم واللقب</button>
+        <button type="button" class="btn-secondary btn-small" data-ins="{الميلاد}">+ تاريخ الميلاد</button>
+        <button type="button" class="btn-secondary btn-small" data-ins="{الرقم_الانتخابي}">+ الرقم الانتخابي</button>
+      </div>
+      <div class="actions" style="margin-top:0;">
+        <button type="button" class="btn-blue btn-small" id="btnSaveTemplateNew">💾 حفظ كقالب جديد</button>
+        <button type="button" class="btn-secondary btn-small" id="btnUpdateTemplate">🔄 تحديث القالب المحدّد</button>
+        <button type="button" class="btn-danger btn-small" id="btnDeleteTemplate">🗑 حذف القالب</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="justify-content:space-between; flex-wrap:wrap;">
+        <span>اختيار المؤطرين <span class="counter" id="smsSelCounter"><b>0</b> محدّد</span></span>
+      </h2>
+      <div class="toolbar">
+        <input type="text" id="smsSearch" placeholder="بحث بالاسم أو الرقم الانتخابي...">
+      </div>
+      <div class="actions" style="margin-top:0; margin-bottom:14px;">
+        <button type="button" class="btn-secondary btn-small" id="btnSmsSelectAll">تحديد الكل</button>
+        <button type="button" class="btn-secondary btn-small" id="btnSmsClear">إلغاء التحديد</button>
+      </div>
+      <div id="smsList"></div>
+      <div class="actions">
+        <button type="button" class="btn-primary" id="btnSmsStart" disabled>▶ ابدأ الإرسال</button>
+      </div>
+    </div>
+
+    <div class="card" id="smsSender" style="display:none; border-color:var(--accent);">
+      <h2>جارٍ الإرسال <span class="counter" id="smsProg">0 / 0</span></h2>
+      <div id="smsCurName" style="font-weight:800; font-size:20px; margin-bottom:6px;"></div>
+      <div id="smsCurState" style="font-size:12.5px; color:var(--muted); margin-bottom:10px;"></div>
+      <div class="sms-preview" id="smsPreview"></div>
+      <div class="actions">
+        <button type="button" class="btn-primary" id="btnSmsOpen">📲 فتح الرسالة</button>
+        <button type="button" class="btn-blue" id="btnSmsNext">التالي ⏭</button>
+        <button type="button" class="btn-secondary" id="btnSmsStop">إيقاف</button>
       </div>
     </div>
   </div>
@@ -725,7 +752,7 @@
         <span class="badge" id="dupCountBadge">0 حالة</span>
       </h2>
       <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
-        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب، أو نفس الرقم الانتخابي، أو نفس تاريخ الميلاد. ملاحظة: إذا اختلف اسم الأب أو رقم الهاتف (عند وجودهما معًا) فلا يُعتبر الاسمان متشابهين. حدّد المؤطر المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
+        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب وتاريخ الميلاد. إذا اختلف الرقم الانتخابي أو اسم الأب (عند وجودهما معًا) فلا يُعتبر التشابه قائمًا. حدّد المؤطر المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
       </p>
       <div id="duplicatesContent"></div>
     </div>
@@ -1132,6 +1159,7 @@ moatirineRef.on("value", (snapshot) => {
     console.error("خطأ في تحديث التبويبات:", err);
     showPageError("خطأ أثناء تحديث التبويبات: " + err.message);
   }
+  try{ renderSmsRecipients(); }catch(err){ console.error("خطأ في قائمة الرسائل:", err); }
   updateDuplicatesBadge();
   updateStatsDashboard();
 });
@@ -1140,8 +1168,6 @@ function updateStatsDashboard(){
   const list = Object.keys(allEntries).map(id => allEntries[id]);
   const counted = list.filter(e => !e.flagged); // المُشار عليهم لا يُحتسبون
   $("statTotal").textContent = counted.length;
-  $("statNew").textContent = counted.filter(e => e.experience === "new").length;
-  $("statPrev").textContent = counted.filter(e => e.experience === "previous").length;
   $("statFlagged").textContent = list.filter(e => e.flagged).length;
 }
 
@@ -1155,40 +1181,43 @@ function showPageError(msg){
 
 /* ============================================================
    كشف التكرار
-   قاعدة التطابق في الاسم: نفس الاسم واللقب، ما لم يختلف
-   اسم الأب (وكلاهما مكتوب) أو رقم الهاتف (وكلاهما مكتوب).
+   القاعدة الوحيدة: نفس الاسم واللقب + نفس تاريخ الميلاد.
+   ويُلغى التشابه إذا اختلف الرقم الانتخابي أو اسم الأب
+   (وكلاهما مكتوب في السجلين).
    ============================================================ */
 function normText(s){ return String(s == null ? "" : s).trim().replace(/\s+/g, " ").toLowerCase(); }
-function normPhone(s){ return String(s == null ? "" : s).replace(/\D/g, ""); }
 
 function sameIdentityCompatible(a, b){
   const fa = normText(a.fatherName), fb = normText(b.fatherName);
   if(fa && fb && fa !== fb) return false;
-  const pa = normPhone(a.phone), pb = normPhone(b.phone);
-  if(pa && pb && pa !== pb) return false;
+  const ea = normText(a.electoralNum), eb = normText(b.electoralNum);
+  if(ea && eb && ea !== eb) return false;
   return true;
 }
 
-function findDuplicateMatches(name, lastName, electoralNum, excludeId, fatherName, phone){
-  const fullKey = normText(name + " " + lastName);
-  const candidate = { fatherName: fatherName || null, phone: phone || null };
+function isSimilar(a, b){
+  const na = normText((a.name || "") + " " + (a.lastName || ""));
+  const nb = normText((b.name || "") + " " + (b.lastName || ""));
+  if(!na || na !== nb) return false;
+  if(!a.birth || !b.birth || a.birth !== b.birth) return false;
+  return sameIdentityCompatible(a, b);
+}
+
+function findDuplicateMatches(candidate, excludeId){
   const matches = [];
   Object.keys(allEntries).forEach(id => {
     if(id === excludeId) return;
-    const e = allEntries[id];
-    const eFullKey = normText((e.name || "") + " " + (e.lastName || ""));
-    const reasons = [];
-    if(fullKey && eFullKey === fullKey && sameIdentityCompatible(candidate, e)) reasons.push("نفس الاسم واللقب");
-    if(electoralNum && e.electoralNum && e.electoralNum === electoralNum) reasons.push("نفس الرقم الانتخابي");
-    if(reasons.length) matches.push({ id, e, reasons });
+    if(isSimilar(candidate, allEntries[id])) matches.push({ id, e: allEntries[id] });
   });
   return matches;
 }
 
-async function confirmIfDuplicates(name, lastName, electoralNum, excludeId, fatherName, phone){
-  const matches = findDuplicateMatches(name, lastName, electoralNum, excludeId, fatherName, phone);
+async function confirmIfDuplicates(candidate, excludeId){
+  const matches = findDuplicateMatches(candidate, excludeId);
   if(matches.length === 0) return true;
-  const details = matches.map(m => "• " + m.e.name + " " + (m.e.lastName || "") + (m.e.fatherName ? " (الأب: " + m.e.fatherName + ")" : "") + " — " + m.reasons.join(" و ")).join("\n");
+  const details = matches.map(m => "• " + m.e.name + " " + (m.e.lastName || "") +
+    (m.e.fatherName ? " (الأب: " + m.e.fatherName + ")" : "") +
+    " — نفس الاسم واللقب وتاريخ الميلاد").join("\n");
   return askConfirm(
     "⚠️ تنبيه: تكرار محتمل",
     "يوجد مؤطر (أو أكثر) مسجّل مسبقاً بنفس البيانات:\n\n" + details + "\n\nهل تريد المتابعة والحفظ رغم ذلك؟",
@@ -1268,15 +1297,15 @@ $("frmMoatir").addEventListener("submit", async function(ev){
 
   try{
     // 1) فحص التكرار
-    if(!(await confirmIfDuplicates(name, lastName, electoralNum, null, fatherName, phone))){
+    const candidate = { name, lastName, birth, electoralNum, fatherName };
+    if(!(await confirmIfDuplicates(candidate, null))){
       showStatus("تم إلغاء الحفظ.", false);
       return;
     }
 
     // 2) تنبيه: اختار "جديد" لكن الاسم موجود فعلًا
     if(experience === "new"){
-      const sameName = findDuplicateMatches(name, lastName, "", null, fatherName, phone)
-        .some(m => m.reasons.includes("نفس الاسم واللقب"));
+      const sameName = findDuplicateMatches(candidate, null).length > 0;
       if(sameName){
         const choice = await askChoice({
           title: "⚠️ هذا الاسم مسجّل من قبل",
@@ -1608,14 +1637,9 @@ function renderReadonlyLists(){
     searchId: "allSearch", bodyId: "allBody", emptyId: "allEmpty",
     counterId: "allCounter", tabCounterId: "allTabCounter", onlyNew: false
   });
-  renderReadonlyList({
-    searchId: "newSearch", bodyId: "newBody", emptyId: "newEmpty",
-    counterId: "newCounter", tabCounterId: "newTabCounter", onlyNew: true
-  });
 }
 
 $("allSearch").addEventListener("input", renderReadonlyLists);
-$("newSearch").addEventListener("input", renderReadonlyLists);
 
 /* ---------------- التعديل ---------------- */
 function openEdit(id){
@@ -1650,6 +1674,7 @@ $("btnSaveEdit").addEventListener("click", async () => {
   const fatherName = $("eFather").value.trim() || null;
   const electoralNum = $("eElectoralNum").value.trim() || null;
   const phone = $("ePhone").value.trim() || null;
+  const birth = birthDisplayToISO($("eBirth").value);
 
   if(!eFullName){
     showToast("الاسم واللقب إلزاميان.", "err");
@@ -1659,7 +1684,7 @@ $("btnSaveEdit").addEventListener("click", async () => {
   const btn = $("btnSaveEdit");
   btn.disabled = true;
   try{
-    if(!(await confirmIfDuplicates(name, lastName, electoralNum, editTargetId, fatherName, phone))){
+    if(!(await confirmIfDuplicates({ name, lastName, birth, electoralNum, fatherName }, editTargetId))){
       return;
     }
 
@@ -1668,7 +1693,7 @@ $("btnSaveEdit").addEventListener("click", async () => {
       name,
       lastName,
       fatherName,
-      birth: birthDisplayToISO($("eBirth").value),
+      birth,
       electoralNum,
       phone,
       educationLevel: $("eEducation").value || null,
@@ -1773,7 +1798,8 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     $("tab-" + btn.dataset.tab).classList.add("active");
     try{
       if(btn.dataset.tab === "duplicates") renderDuplicates();
-      if(btn.dataset.tab === "all" || btn.dataset.tab === "newcomers") renderReadonlyLists();
+      if(btn.dataset.tab === "sms") renderSmsRecipients();
+      if(btn.dataset.tab === "all") renderReadonlyLists();
     }catch(err){
       console.error("خطأ عند فتح التبويب:", err);
       showPageError("خطأ أثناء فتح هذا التبويب: " + err.message);
@@ -1781,27 +1807,261 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
   });
 });
 
+
+/* ============================================================
+   إرسال رسائل SMS (يفتح تطبيق الرسائل في الهاتف، رسالة لكل مؤطر)
+   ============================================================ */
+const templatesRef = db.collection("قوالب_الرسائل");
+let smsTemplates = {};
+let smsSelected = new Set();
+const smsSent = new Set();
+let smsQueue = [];
+let smsIndex = 0;
+let smsQueueText = "";
+
+function cleanPhone(p){ return String(p == null ? "" : p).replace(/[^\d+]/g, ""); }
+
+function fillSmsText(text, e){
+  const full = ((e.name || "") + " " + (e.lastName || "")).trim();
+  return text
+    .replace(/\{الاسم\}/g, full)
+    .replace(/\{الميلاد\}/g, e.birth ? formatDate(e.birth) : "—")
+    .replace(/\{الرقم_الانتخابي\}/g, e.electoralNum || "—");
+}
+
+function smsUri(phone, body){
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  return "sms:" + phone + (isIOS ? "&" : "?") + "body=" + encodeURIComponent(body);
+}
+
+function renderTemplateSelect(){
+  const sel = $("smsTemplateSelect");
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">✍️ رسالة جديدة (كتابة يدوية)</option>';
+  Object.keys(smsTemplates)
+    .sort((a, b) => (smsTemplates[a].createdAt || 0) - (smsTemplates[b].createdAt || 0))
+    .forEach(id => {
+      const o = document.createElement("option");
+      o.value = id;
+      o.textContent = "📄 " + (smsTemplates[id].name || "قالب");
+      sel.appendChild(o);
+    });
+  if(keep && smsTemplates[keep]) sel.value = keep;
+}
+
+templatesRef.onSnapshot(
+  (snap) => {
+    const first = Object.keys(smsTemplates).length === 0;
+    smsTemplates = {};
+    snap.forEach(d => { smsTemplates[d.id] = d.data(); });
+    renderTemplateSelect();
+    if(first){
+      try{
+        const last = localStorage.getItem("moatir_sms_tpl");
+        if(last && smsTemplates[last]){
+          $("smsTemplateSelect").value = last;
+          $("smsText").value = smsTemplates[last].text || "";
+        }
+      }catch(err){}
+    }
+  },
+  (err) => {
+    console.error("خطأ في القوالب:", err);
+    showToast("تعذّر تحميل القوالب: " + err.message, "err");
+  }
+);
+
+$("smsTemplateSelect").addEventListener("change", function(){
+  const t = smsTemplates[this.value];
+  if(t) $("smsText").value = t.text || "";
+  try{ localStorage.setItem("moatir_sms_tpl", this.value); }catch(err){}
+});
+
+document.querySelectorAll("[data-ins]").forEach(b => {
+  b.addEventListener("click", () => {
+    const ta = $("smsText");
+    const v = b.dataset.ins;
+    const start = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+    const end = ta.selectionEnd == null ? ta.value.length : ta.selectionEnd;
+    ta.value = ta.value.slice(0, start) + v + ta.value.slice(end);
+    ta.focus();
+    const pos = start + v.length;
+    ta.setSelectionRange(pos, pos);
+  });
+});
+
+$("btnSaveTemplateNew").addEventListener("click", async () => {
+  const text = $("smsText").value.trim();
+  if(!text){ showToast("اكتب نص الرسالة أولًا.", "err"); return; }
+  const name = (window.prompt("اسم القالب (مثال: دعوة لاجتماع):") || "").trim();
+  if(!name) return;
+  try{
+    const ref = await templatesRef.add({ name, text, createdAt: Date.now() });
+    $("smsTemplateSelect").value = ref.id;
+    try{ localStorage.setItem("moatir_sms_tpl", ref.id); }catch(err){}
+    showToast("تم حفظ القالب ✅", "ok");
+  }catch(err){
+    showToast("تعذّر حفظ القالب: " + err.message, "err");
+  }
+});
+
+$("btnUpdateTemplate").addEventListener("click", async () => {
+  const id = $("smsTemplateSelect").value;
+  const text = $("smsText").value.trim();
+  if(!id){ showToast("اختر قالبًا أولًا.", "err"); return; }
+  if(!text){ showToast("نص الرسالة فارغ.", "err"); return; }
+  try{
+    await templatesRef.doc(id).update({ text });
+    showToast("تم تحديث القالب ✅", "ok");
+  }catch(err){
+    showToast("تعذّر التحديث: " + err.message, "err");
+  }
+});
+
+$("btnDeleteTemplate").addEventListener("click", async () => {
+  const id = $("smsTemplateSelect").value;
+  if(!id){ showToast("اختر قالبًا أولًا.", "err"); return; }
+  const ok = await askConfirm("🗑 حذف القالب", "هل تريد حذف هذا القالب نهائيًا؟", "حذف");
+  if(!ok) return;
+  try{
+    await templatesRef.doc(id).delete();
+    $("smsTemplateSelect").value = "";
+    showToast("تم حذف القالب", "ok");
+  }catch(err){
+    showToast("تعذّر الحذف: " + err.message, "err");
+  }
+});
+
+function smsEligibleIds(){
+  return Object.keys(allEntries)
+    .filter(id => !allEntries[id].flagged)
+    .sort((a, b) => (allEntries[a].createdAt || 0) - (allEntries[b].createdAt || 0));
+}
+
+function updateSmsCounters(){
+  Array.from(smsSelected).forEach(id => { if(!allEntries[id]) smsSelected.delete(id); });
+  $("smsSelCounter").innerHTML = "<b>" + smsSelected.size + "</b> محدّد";
+  $("btnSmsStart").disabled = smsSelected.size === 0;
+  $("btnSmsStart").textContent = "▶ ابدأ الإرسال (" + smsSelected.size + ")";
+}
+
+function renderSmsRecipients(){
+  const box = $("smsList");
+  if(!box) return;
+  const search = $("smsSearch").value.trim().toLowerCase();
+  box.innerHTML = "";
+  let shown = 0;
+  smsEligibleIds().forEach(id => {
+    const e = allEntries[id];
+    const full = ((e.name || "") + " " + (e.lastName || "")).trim();
+    if(search && !(full + " " + (e.electoralNum || "")).toLowerCase().includes(search)) return;
+    shown++;
+    const hasPhone = !!cleanPhone(e.phone);
+    const row = document.createElement("label");
+    row.className = "sms-item" + (hasPhone ? "" : " disabled");
+    const tag = !hasPhone
+      ? '<span class="sms-tag">بدون رقم هاتف</span>'
+      : (smsSent.has(id) ? '<span class="sms-tag ok">✅ فُتحت له الرسالة</span>' : "");
+    row.innerHTML = '<input type="checkbox" data-id="' + escapeHtml(id) + '" ' +
+      (hasPhone ? "" : "disabled ") + (smsSelected.has(id) && hasPhone ? "checked" : "") + '>' +
+      '<span>' + escapeHtml(full) + '</span>' + tag;
+    box.appendChild(row);
+  });
+  if(shown === 0){
+    box.innerHTML = '<div class="empty-state" style="padding:24px;">لا يوجد مؤطرون</div>';
+  }
+  updateSmsCounters();
+}
+
+$("smsList").addEventListener("change", function(ev){
+  const cb = ev.target.closest("input[type=checkbox]");
+  if(!cb) return;
+  if(cb.checked) smsSelected.add(cb.dataset.id); else smsSelected.delete(cb.dataset.id);
+  updateSmsCounters();
+});
+$("smsSearch").addEventListener("input", renderSmsRecipients);
+$("btnSmsSelectAll").addEventListener("click", () => {
+  document.querySelectorAll("#smsList input[type=checkbox]:not(:disabled)").forEach(cb => smsSelected.add(cb.dataset.id));
+  renderSmsRecipients();
+});
+$("btnSmsClear").addEventListener("click", () => {
+  smsSelected.clear();
+  renderSmsRecipients();
+});
+
+function smsShowCurrent(){
+  while(smsIndex < smsQueue.length && !allEntries[smsQueue[smsIndex]]) smsIndex++;
+  if(smsIndex >= smsQueue.length){ smsFinish(); return; }
+  const id = smsQueue[smsIndex];
+  const e = allEntries[id];
+  $("smsProg").textContent = (smsIndex + 1) + " / " + smsQueue.length;
+  $("smsCurName").textContent = ((e.name || "") + " " + (e.lastName || "")).trim();
+  $("smsCurState").textContent = smsSent.has(id) ? "✅ فُتحت له الرسالة" : "لم تُفتح الرسالة بعد";
+  $("smsPreview").textContent = fillSmsText(smsQueueText, e);
+  $("btnSmsNext").textContent = smsIndex >= smsQueue.length - 1 ? "إنهاء ✔" : "التالي ⏭";
+}
+
+function smsFinish(){
+  $("smsSender").style.display = "none";
+  smsQueue = [];
+  smsIndex = 0;
+  renderSmsRecipients();
+  showToast("انتهى الإرسال ✅", "ok");
+}
+
+$("btnSmsStart").addEventListener("click", () => {
+  const text = $("smsText").value.trim();
+  if(!text){ showToast("اكتب نص الرسالة أو اختر قالبًا.", "err"); return; }
+  smsQueue = smsEligibleIds().filter(id => smsSelected.has(id) && cleanPhone(allEntries[id].phone));
+  if(smsQueue.length === 0){ showToast("لا يوجد مؤطر محدّد له رقم هاتف.", "err"); return; }
+  smsQueueText = text;
+  smsIndex = 0;
+  $("smsSender").style.display = "block";
+  smsShowCurrent();
+  $("smsSender").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+$("btnSmsOpen").addEventListener("click", () => {
+  const id = smsQueue[smsIndex];
+  const e = allEntries[id];
+  if(!e) return;
+  smsSent.add(id);
+  $("smsCurState").textContent = "✅ فُتحت له الرسالة";
+  window.location.href = smsUri(cleanPhone(e.phone), fillSmsText(smsQueueText, e));
+});
+
+$("btnSmsNext").addEventListener("click", () => {
+  if(smsIndex >= smsQueue.length - 1){ smsFinish(); return; }
+  smsIndex++;
+  smsShowCurrent();
+});
+
+$("btnSmsStop").addEventListener("click", () => {
+  $("smsSender").style.display = "none";
+  smsQueue = [];
+  smsIndex = 0;
+  renderSmsRecipients();
+});
+
 /* ============================================================
    التسجيلات المتشابهة
+   القاعدة الوحيدة: نفس الاسم واللقب + نفس تاريخ الميلاد،
+   مع استبعاد من اختلف رقمه الانتخابي أو اسم أبيه.
    ============================================================ */
 function computeDuplicateGroups(){
-  const byName = {};
-  const byElectoral = {};
-  const byBirth = {};
-
+  const buckets = {};
   Object.keys(allEntries).forEach(id => {
     const e = allEntries[id];
     const nameKey = normText((e.name || "") + " " + (e.lastName || ""));
-    if(nameKey){ (byName[nameKey] = byName[nameKey] || []).push(id); }
-    if(e.electoralNum){ (byElectoral[e.electoralNum] = byElectoral[e.electoralNum] || []).push(id); }
-    if(e.birth){ (byBirth[e.birth] = byBirth[e.birth] || []).push(id); }
+    if(!nameKey || !e.birth) return;
+    const key = nameKey + "|" + e.birth;
+    (buckets[key] = buckets[key] || []).push(id);
   });
 
   const groups = [];
-
-  // الأسماء: نفس الاسم واللقب، مع استبعاد من اختلف اسم أبيه أو هاتفه
-  Object.keys(byName).forEach(k => {
-    const list = byName[k];
+  Object.keys(buckets).forEach(k => {
+    const list = buckets[k];
     if(list.length < 2) return;
     const parent = {};
     list.forEach(id => parent[id] = id);
@@ -1816,17 +2076,9 @@ function computeDuplicateGroups(){
     const clusters = {};
     list.forEach(id => { const r = find(id); (clusters[r] = clusters[r] || []).push(id); });
     Object.keys(clusters).forEach(r => {
-      if(clusters[r].length > 1) groups.push({ reason: "نفس الاسم واللقب", ids: clusters[r] });
+      if(clusters[r].length > 1) groups.push({ reason: "نفس الاسم واللقب وتاريخ الميلاد", ids: clusters[r] });
     });
   });
-
-  Object.keys(byElectoral).forEach(k => {
-    if(byElectoral[k].length > 1) groups.push({ reason: "نفس الرقم الانتخابي", ids: byElectoral[k] });
-  });
-  Object.keys(byBirth).forEach(k => {
-    if(byBirth[k].length > 1) groups.push({ reason: "نفس تاريخ الميلاد", ids: byBirth[k] });
-  });
-
   return groups;
 }
 
