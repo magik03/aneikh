@@ -895,6 +895,7 @@
       <div class="actions" style="margin-top:0;">
         <button type="button" class="btn-secondary btn-small" id="btnExportAll">⬇ تصدير الكل (Excel)</button>
         <button type="button" class="btn-secondary btn-small" id="btnExportAssigned">⬇ تصدير الموزَّعين فقط</button>
+        <button type="button" class="btn-secondary btn-small" id="btnExportEmpty">⬇ تصدير المراكز فارغة (قالب بدون مؤطرين)</button>
       </div>
     </div>
 
@@ -2882,6 +2883,76 @@ function exportExcel(onlyAssigned){
 
 $("btnExportAll").addEventListener("click", () => exportExcel(false));
 $("btnExportAssigned").addEventListener("click", () => exportExcel(true));
+
+/* ============================================================
+   تصدير قالب المراكز فارغًا: كل المقاعد بدون أسماء أو توزيع
+   ============================================================ */
+function buildEmptyTemplateRows(centerFilter, typeFilter){
+  const rows = [];
+  const codes = centerFilter ? [centerFilter] : Object.keys(CENTERS);
+
+  codes.forEach(code => {
+    const center = CENTERS[code];
+    if(!center) return;
+    const centerName = code + " - " + center.name;
+
+    const pushRow = (level, officeNum, type, pos) => {
+      rows.push({
+        "المركز": centerName,
+        "مستوى التوزيع": level,
+        "رقم المكتب": officeNum,
+        "نوع المكتب": type,
+        "المنصب": pos,
+        "الاسم واللقب": "",
+        "تاريخ الميلاد": "",
+        "الرقم الانتخابي": "",
+        "رقم الهاتف": "",
+        "المستوى التعليمي": "",
+        "الحالة": "",
+        "ملاحظات": ""
+      });
+    };
+
+    // طاقم المركز (يُستثنى عند اختيار نوع مكتب محدد، مثل بقية التصدير)
+    if(!typeFilter){
+      CENTER_POSITIONS.forEach(pos => pushRow("طاقم المركز", "", "", pos));
+    }
+
+    // المكاتب مرتبة برقمها
+    center.offices.slice().sort((a, b) => a - b).forEach(num => {
+      OFFICE_TYPES.forEach(type => {
+        if(typeFilter && type !== typeFilter) return;
+        POSITIONS_ORDER.forEach(pos => pushRow("مكتب", num, type, pos));
+      });
+    });
+  });
+  return rows;
+}
+
+function exportEmptyTemplate(){
+  const centerFilter = $("exportFilterCenter").value;
+  const typeFilter = $("exportFilterType").value;
+  const rows = buildEmptyTemplateRows(centerFilter, typeFilter);
+  if(rows.length === 0){
+    showToast("لا توجد مقاعد مطابقة لهذا الاختيار.", "err");
+    return;
+  }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = [
+    {wch:26},{wch:14},{wch:12},{wch:12},{wch:22},
+    {wch:24},{wch:14},{wch:16},{wch:14},{wch:14},{wch:10},{wch:26}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "المراكز فارغة");
+
+  let fileName = "المراكز_فارغة";
+  if(centerFilter && CENTERS[centerFilter]) fileName += "_مركز_" + CENTERS[centerFilter].name;
+  if(typeFilter) fileName += "_" + typeFilter;
+  XLSX.writeFile(wb, fileName + ".xlsx");
+  showToast("تم تصدير قالب المراكز الفارغ (" + rows.length + " مقعد) ✅", "ok");
+}
+
+$("btnExportEmpty").addEventListener("click", exportEmptyTemplate);
 
 /* ============================================================
    دخول الأدمن بالكود السري (Firebase Authentication)
