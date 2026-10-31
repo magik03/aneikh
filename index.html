@@ -18,14 +18,16 @@
 ============================================================
   name             : الاسم (أول كلمة من الاسم الكامل)
   lastName         : اللقب (بقية الكلمات)
+  fatherName       : اسم الأب (اختياري) أو null            [جديد]
   birth            : تاريخ الميلاد بصيغة ISO "YYYY-MM-DD" أو null
   electoralNum     : الرقم الانتخابي أو null
   phone            : رقم الهاتف أو null
   educationLevel   : المستوى التعليمي أو null
   notes            : ملاحظات أو null
-  experience       : "new" (جديد — غير مسجّل في قوائمنا سابقًا) | "previous" (سابق) | null (قديم/غير محدد)
+  experience       : "new" (جديد) | "previous" (غير جديد) | null (غير محدد)
+  previousRole     : وظيفته في انتخابات سابقة (عند "غير جديد") أو null   [جديد]
   flagged          : true/false — هل عليه إشارة 🚩
-  issueType        : نوع المشكلة عند الإشارة أو null
+  issueType        : سبب الإشارة أو null
   issueReason      : (محجوز) null
   deleted          : true/false — حذف ناعم (لا يُمسح السجل فعليًا من هذه المنصة أبدًا)
   deletedAt        : وقت الحذف (ms) أو null
@@ -33,7 +35,7 @@
   deletedByClient  : معرّف الجهاز الذي حذف أو null
   createdAt        : وقت الإنشاء (ms)
   updatedAt        : وقت آخر تعديل (ms)
-  clientId         : معرّف الجهاز الذي أنشأ السجل (بديل createdBy)
+  clientId         : معرّف الجهاز الذي أنشأ السجل
   assignLevel, center, centerPosition, officeNumber, officeType, officePosition : حقول محجوزة (null)
 ============================================================
 -->
@@ -194,7 +196,7 @@
   .toolbar label.chk input{width:auto; padding:0;}
 
   .table-wrap{overflow-x:auto; border-radius:12px; border:1px solid var(--border);}
-  table{width:100%; border-collapse:collapse; font-size:13.5px; min-width:820px;}
+  table{width:100%; border-collapse:collapse; font-size:13.5px; min-width:880px;}
   thead th{
     background:#eef4f0;
     color:var(--muted);
@@ -215,7 +217,6 @@
   .row-actions{display:flex; gap:6px; flex-wrap:nowrap;}
   .row-actions button{white-space:nowrap;}
 
-  /* المؤطر الجديد: تلوين أزرق خفيف (يأتي قبل الأحمر ليكون الأحمر هو الأولوية) */
   tbody tr.new-row{background:var(--blue-soft);}
   tbody tr.new-row:hover{background:rgba(37,99,235,0.14);}
   .badge-new{
@@ -229,6 +230,10 @@
     color:#fff;
     vertical-align:middle;
     white-space:nowrap;
+  }
+  .prev-note{
+    display:block; margin-top:3px; font-size:11px; color:var(--muted); font-weight:600;
+    white-space:normal;
   }
 
   tbody tr.flagged-row{background:rgba(239,68,68,0.08);}
@@ -306,7 +311,6 @@
   .modal p.pre{white-space:pre-line;}
   .modal .actions{margin-top:0;}
 
-  /* ---------- إشعارات (Toasts) ---------- */
   #toastBox{
     position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
     z-index:10000; display:flex; flex-direction:column; gap:8px; align-items:center;
@@ -334,7 +338,6 @@
     .card{padding:16px;}
   }
 
-  /* ---------- تبويبات ---------- */
   .tabs{
     display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;
     border-bottom:1px solid var(--border);
@@ -355,7 +358,6 @@
   .tab-section{display:none;}
   .tab-section.active{display:block;}
 
-  /* ---------- شاشة الشعار الافتتاحية ---------- */
   #splashScreen{
     position:fixed; inset:0; z-index:9999;
     display:flex; align-items:center; justify-content:center;
@@ -408,7 +410,6 @@
     40%{opacity:1; transform:translateY(-4px);}
   }
 
-  /* ---------- المتشابهون ---------- */
   .dup-group{
     border:1px solid rgba(245,158,11,0.35);
     background:rgba(245,158,11,0.06);
@@ -442,7 +443,6 @@
 </head>
 <body>
 
-<!-- شاشة الشعار الافتتاحية -->
 <div id="splashScreen" title="اضغط للمتابعة">
   <div class="splash-inner">
     <div class="splash-logo-circle">
@@ -455,7 +455,6 @@
 </div>
 
 <script>
-  // إخفاء شاشة الشعار تلقائياً بعد ظهورها، أو فوراً عند الضغط عليها
   (function(){
     var splash = document.getElementById("splashScreen");
     function hideSplash(){
@@ -469,7 +468,6 @@
 </script>
 
 <script>
-  // معالج أخطاء عام: يظهر أي خطأ جافاسكريبت مباشرة على الشاشة بدل ما يفشل بصمت
   window.addEventListener("error", function(e){
     var el = document.getElementById("errorBanner");
     if(el){
@@ -493,7 +491,6 @@
 
 <div class="wrap">
 
-  <!-- لوحة الإحصائيات -->
   <div class="card" style="padding:18px;">
     <div class="stats-grid">
       <div class="stat-card" style="background:linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05)); border:1px solid rgba(34,197,94,0.2);">
@@ -509,7 +506,7 @@
       <div class="stat-card" style="background:linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05)); border:1px solid rgba(34,197,94,0.2);">
         <div class="stat-icon">🔁</div>
         <div class="stat-value" id="statPrev">0</div>
-        <div class="stat-label">مؤطرون سابقون</div>
+        <div class="stat-label">غير جدد (سابقون)</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05)); border:1px solid rgba(239,68,68,0.2);">
         <div class="stat-icon">🚩</div>
@@ -526,7 +523,6 @@
 
   <div class="tab-section active" id="tab-register">
 
-  <!-- نموذج إدخال بيانات المؤطر -->
   <div class="card">
     <h2>تسجيل مؤطر جديد <span class="badge">إدخال البيانات</span></h2>
 
@@ -535,6 +531,10 @@
         <div class="field" style="grid-column: span 2;">
           <label>الاسم واللقب <span class="req">*</span></label>
           <input type="text" id="fFullName" required placeholder="مثال: أحمد بن علي">
+        </div>
+        <div class="field">
+          <label>اسم الأب <span class="opt">(اختياري)</span></label>
+          <input type="text" id="fFather" placeholder="مثال: محمد">
         </div>
         <div class="field">
           <label>تاريخ الميلاد <span class="opt">(اختياري)</span></label>
@@ -561,6 +561,18 @@
             <option value="ماجستير">ماجستير</option>
           </select>
         </div>
+        <div class="field">
+          <label>هل هو جديد في الانتخابات؟ <span class="opt">(اختياري)</span></label>
+          <select id="fExperience">
+            <option value="" selected>اختر</option>
+            <option value="new">🔵 جديد</option>
+            <option value="previous">غير جديد</option>
+          </select>
+        </div>
+        <div class="field" id="fPrevRoleWrap" style="grid-column: span 2; display:none;">
+          <label>ما هي وظيفته في الانتخابات السابقة؟ <span class="opt">(اختياري)</span></label>
+          <input type="text" id="fPrevRole" placeholder="مثال: رئيس مكتب، مساعد، مراقب...">
+        </div>
         <div class="field" style="grid-column: span 2;">
           <label>ملاحظات <span class="opt">(اختياري)</span></label>
           <textarea id="fNotes" placeholder="أي ملاحظات إضافية..."></textarea>
@@ -576,7 +588,6 @@
     </form>
   </div>
 
-  <!-- قائمة المؤطرين المسجلين -->
   <div class="card">
     <h2 style="justify-content:space-between; flex-wrap:wrap;">
       <span>قائمة المؤطرين
@@ -585,7 +596,7 @@
     </h2>
 
     <div class="toolbar">
-      <input type="text" id="searchBox" placeholder="بحث بالاسم، اللقب، الرقم الانتخابي، الهاتف أو تاريخ الميلاد...">
+      <input type="text" id="searchBox" placeholder="بحث بالاسم، اللقب، اسم الأب، الرقم الانتخابي، الهاتف أو تاريخ الميلاد...">
 
       <label class="chk">
         <input type="checkbox" id="filterNewOnly">
@@ -603,6 +614,7 @@
           <tr>
             <th style="width:34px;"><input type="checkbox" id="selectAllCheckbox" title="تحديد الكل"></th>
             <th>الاسم واللقب</th>
+            <th>اسم الأب</th>
             <th>تاريخ الميلاد</th>
             <th>الرقم الانتخابي</th>
             <th>الهاتف</th>
@@ -621,7 +633,6 @@
 
   </div><!-- /tab-register -->
 
-  <!-- ============ قسم التسجيلات المتشابهة ============ -->
   <div class="tab-section" id="tab-duplicates">
     <div class="card">
       <h2>
@@ -629,7 +640,7 @@
         <span class="badge" id="dupCountBadge">0 حالة</span>
       </h2>
       <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
-        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب، أو نفس الرقم الانتخابي، أو نفس تاريخ الميلاد — لاكتشاف التسجيلات المكررة بسهولة. حدّد المؤطر (أو المؤطرين) المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
+        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب، أو نفس الرقم الانتخابي، أو نفس تاريخ الميلاد. ملاحظة: إذا اختلف اسم الأب أو رقم الهاتف (عند وجودهما معًا) فلا يُعتبر الاسمان متشابهين. حدّد المؤطر المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
       </p>
       <div id="duplicatesContent"></div>
     </div>
@@ -645,6 +656,10 @@
       <div class="field" style="grid-column: span 2;">
         <label>الاسم واللقب</label>
         <input type="text" id="eFullName">
+      </div>
+      <div class="field">
+        <label>اسم الأب <span class="opt">(اختياري)</span></label>
+        <input type="text" id="eFather">
       </div>
       <div class="field">
         <label>تاريخ الميلاد <span class="opt">(اختياري)</span></label>
@@ -671,13 +686,17 @@
           <option value="ماجستير">ماجستير</option>
         </select>
       </div>
-      <div class="field" style="grid-column: span 2;">
-        <label>الحالة (جديد / سابق)</label>
+      <div class="field">
+        <label>هل هو جديد في الانتخابات؟</label>
         <select id="eExperience">
           <option value="">غير محدد</option>
-          <option value="new">🔵 جديد (غير مسجّل في قوائمنا سابقًا)</option>
-          <option value="previous">سابق</option>
+          <option value="new">🔵 جديد</option>
+          <option value="previous">غير جديد</option>
         </select>
+      </div>
+      <div class="field" id="ePrevRoleWrap" style="grid-column: span 2; display:none;">
+        <label>وظيفته في الانتخابات السابقة</label>
+        <input type="text" id="ePrevRole">
       </div>
       <div class="field" style="grid-column: span 2;">
         <label>ملاحظات</label>
@@ -691,14 +710,24 @@
   </div>
 </div>
 
-<!-- Modal الإشارة (تمييز مؤطر بمشكلة) -->
+<!-- Modal الإشارة -->
 <div class="modal-overlay" id="flagModal">
   <div class="modal">
     <h3 style="color:#c0272d;">🚩 وضع إشارة على المؤطر</h3>
     <p id="flagMoatirName" style="color:var(--text); font-weight:700; margin-bottom:14px;"></p>
     <div class="field" style="margin-bottom:12px;">
-      <label>نوع المشكلة <span class="req">*</span></label>
-      <input type="text" id="flagIssueType" placeholder="مثال: أخلّ بالنظام العام">
+      <label>سبب الإشارة <span class="req">*</span></label>
+      <select id="flagReasonSelect">
+        <option value="">اختر السبب</option>
+        <option value="مترشح في الانتخابات">مترشح في الانتخابات</option>
+        <option value="أخلّ بأخلاقيات المهنة في انتخابات سابقة">أخلّ بأخلاقيات المهنة في انتخابات سابقة</option>
+        <option value="تخلّف عن الانتخابات السابقة">تخلّف عن الانتخابات السابقة</option>
+        <option value="أخرى">أخرى</option>
+      </select>
+    </div>
+    <div class="field" id="flagOtherWrap" style="margin-bottom:12px; display:none;">
+      <label>اذكر السبب <span class="req">*</span></label>
+      <input type="text" id="flagIssueType" placeholder="اكتب سبب الإشارة...">
     </div>
     <div class="actions">
       <button class="btn-danger" id="btnSaveFlag">حفظ الإشارة</button>
@@ -708,7 +737,7 @@
   </div>
 </div>
 
-<!-- Modal سبب الحذف (حذف ناعم — يُرسل للمدير) -->
+<!-- Modal سبب الحذف -->
 <div class="modal-overlay" id="deleteReasonModal">
   <div class="modal">
     <h3>🗑 حذف مؤطر</h3>
@@ -721,6 +750,9 @@
         <option value="خطأ إدخال">خطأ إدخال</option>
         <option value="انسحب">انسحب</option>
         <option value="غير مؤهل">غير مؤهل</option>
+        <option value="مترشح في الانتخابات">مترشح في الانتخابات</option>
+        <option value="أخلّ بأخلاقيات المهنة في انتخابات سابقة">أخلّ بأخلاقيات المهنة في انتخابات سابقة</option>
+        <option value="تخلّف عن الانتخابات السابقة">تخلّف عن الانتخابات السابقة</option>
         <option value="أخرى">أخرى</option>
       </select>
     </div>
@@ -736,7 +768,7 @@
   </div>
 </div>
 
-<!-- Modal اختيار عام (تأكيد / جديد أو سابق / تنبيه تكرار) -->
+<!-- Modal اختيار عام -->
 <div class="modal-overlay" id="choiceModal" style="z-index:60;">
   <div class="modal">
     <h3 id="choiceTitle"></h3>
@@ -767,7 +799,6 @@ const collectionRef = db.collection("مؤطرين");
 
 const $ = (id) => document.getElementById(id);
 
-/* ---------------- معرّف الجهاز (بديل createdBy) ---------------- */
 const CLIENT_ID = (function(){
   try{
     let id = localStorage.getItem("moatir_client_id");
@@ -781,8 +812,6 @@ const CLIENT_ID = (function(){
   }
 })();
 
-/* ---------------- طبقة الوصول للبيانات ---------------- */
-// ملاحظة: لا يوجد حذف فعلي في هذه المنصة أبدًا — الحذف دائمًا "ناعم" (deleted: true)
 const moatirineRef = {
   on(event, cb){
     if(event === "value"){
@@ -791,7 +820,7 @@ const moatirineRef = {
           const data = {};
           snapshot.forEach(doc => {
             const d = doc.data();
-            if(d.deleted === true) return; // المحذوفون ناعمًا لا يظهرون في هذه المنصة
+            if(d.deleted === true) return;
             data[doc.id] = d;
           });
           cb({ val: () => data });
@@ -827,14 +856,14 @@ const moatirineRef = {
   }
 };
 
-let allEntries = {}; // { id: {...} } — بدون المحذوفين
+let allEntries = {};
 let editTargetId = null;
 let flagTargetId = null;
-let selectedIds = new Set();     // تحديد دفعة في القائمة الرئيسية
-let dupSelectedIds = new Set();  // تحديد دفعة في تبويب المتشابهة
+let selectedIds = new Set();
+let dupSelectedIds = new Set();
 
 /* ============================================================
-   أدوات الواجهة: Toast + نوافذ الاختيار
+   أدوات الواجهة
    ============================================================ */
 function showToast(msg, type){
   const box = $("toastBox");
@@ -849,7 +878,6 @@ function showToast(msg, type){
   }, 3500);
 }
 
-/* نافذة اختيار عامة: تعيد قيمة الزر المضغوط (أو null عند الإلغاء) */
 function askChoice(opts){
   return new Promise(resolve => {
     const modal = $("choiceModal");
@@ -890,7 +918,7 @@ function askDeleteReason(ids){
     const modal = $("deleteReasonModal");
     const names = ids.map(id => {
       const e = allEntries[id];
-      return e ? ("• " + e.name + " " + e.lastName) : "";
+      return e ? ("• " + e.name + " " + (e.lastName || "")) : "";
     }).filter(Boolean);
     const shown = names.slice(0, 8).join("\n") + (names.length > 8 ? "\n… و" + (names.length - 8) + " آخرين" : "");
     $("delReasonMsg").textContent = "سيتم حذف " + ids.length + " مؤطر:\n" + shown;
@@ -919,7 +947,6 @@ function askDeleteReason(ids){
   });
 }
 
-/* طلب حذف (ناعم) لمؤطر أو أكثر مع سبب إلزامي */
 async function requestDelete(ids){
   ids = ids.filter(id => allEntries[id]);
   if(ids.length === 0) return false;
@@ -954,7 +981,6 @@ collectionRef.limit(1).onSnapshot(
   }
 );
 
-/* ---------------- الاستماع للبيانات ---------------- */
 moatirineRef.on("value", (snapshot) => {
   allEntries = snapshot.val() || {};
   try{
@@ -973,14 +999,12 @@ moatirineRef.on("value", (snapshot) => {
   updateStatsDashboard();
 });
 
-/* ============================================================
-   لوحة الإحصائيات
-   ============================================================ */
 function updateStatsDashboard(){
   const list = Object.keys(allEntries).map(id => allEntries[id]);
-  $("statTotal").textContent = list.length;
-  $("statNew").textContent = list.filter(e => e.experience === "new").length;
-  $("statPrev").textContent = list.filter(e => e.experience === "previous").length;
+  const counted = list.filter(e => !e.flagged); // المُشار عليهم لا يُحتسبون
+  $("statTotal").textContent = counted.length;
+  $("statNew").textContent = counted.filter(e => e.experience === "new").length;
+  $("statPrev").textContent = counted.filter(e => e.experience === "previous").length;
   $("statFlagged").textContent = list.filter(e => e.flagged).length;
 }
 
@@ -993,27 +1017,41 @@ function showPageError(msg){
 }
 
 /* ============================================================
-   كشف التكرار (نفس الاسم واللقب، أو نفس الرقم الانتخابي)
+   كشف التكرار
+   قاعدة التطابق في الاسم: نفس الاسم واللقب، ما لم يختلف
+   اسم الأب (وكلاهما مكتوب) أو رقم الهاتف (وكلاهما مكتوب).
    ============================================================ */
-function findDuplicateMatches(name, lastName, electoralNum, excludeId){
-  const fullKey = (name + " " + lastName).trim().toLowerCase();
+function normText(s){ return String(s == null ? "" : s).trim().replace(/\s+/g, " ").toLowerCase(); }
+function normPhone(s){ return String(s == null ? "" : s).replace(/\D/g, ""); }
+
+function sameIdentityCompatible(a, b){
+  const fa = normText(a.fatherName), fb = normText(b.fatherName);
+  if(fa && fb && fa !== fb) return false;
+  const pa = normPhone(a.phone), pb = normPhone(b.phone);
+  if(pa && pb && pa !== pb) return false;
+  return true;
+}
+
+function findDuplicateMatches(name, lastName, electoralNum, excludeId, fatherName, phone){
+  const fullKey = normText(name + " " + lastName);
+  const candidate = { fatherName: fatherName || null, phone: phone || null };
   const matches = [];
   Object.keys(allEntries).forEach(id => {
     if(id === excludeId) return;
     const e = allEntries[id];
-    const eFullKey = ((e.name || "") + " " + (e.lastName || "")).trim().toLowerCase();
+    const eFullKey = normText((e.name || "") + " " + (e.lastName || ""));
     const reasons = [];
-    if(fullKey && eFullKey === fullKey) reasons.push("نفس الاسم واللقب");
+    if(fullKey && eFullKey === fullKey && sameIdentityCompatible(candidate, e)) reasons.push("نفس الاسم واللقب");
     if(electoralNum && e.electoralNum && e.electoralNum === electoralNum) reasons.push("نفس الرقم الانتخابي");
     if(reasons.length) matches.push({ id, e, reasons });
   });
   return matches;
 }
 
-async function confirmIfDuplicates(name, lastName, electoralNum, excludeId){
-  const matches = findDuplicateMatches(name, lastName, electoralNum, excludeId);
+async function confirmIfDuplicates(name, lastName, electoralNum, excludeId, fatherName, phone){
+  const matches = findDuplicateMatches(name, lastName, electoralNum, excludeId, fatherName, phone);
   if(matches.length === 0) return true;
-  const details = matches.map(m => "• " + m.e.name + " " + (m.e.lastName || "") + " — " + m.reasons.join(" و ")).join("\n");
+  const details = matches.map(m => "• " + m.e.name + " " + (m.e.lastName || "") + (m.e.fatherName ? " (الأب: " + m.e.fatherName + ")" : "") + " — " + m.reasons.join(" و ")).join("\n");
   return askConfirm(
     "⚠️ تنبيه: تكرار محتمل",
     "يوجد مؤطر (أو أكثر) مسجّل مسبقاً بنفس البيانات:\n\n" + details + "\n\nهل تريد المتابعة والحفظ رغم ذلك؟",
@@ -1021,9 +1059,6 @@ async function confirmIfDuplicates(name, lastName, electoralNum, excludeId){
   );
 }
 
-/* ============================================================
-   بيانات ناقصة — للأيقونة التحذيرية في الجدول
-   ============================================================ */
 function getMissingFields(e){
   const missing = [];
   if(!e.birth) missing.push("تاريخ الميلاد");
@@ -1032,9 +1067,7 @@ function getMissingFields(e){
   return missing;
 }
 
-/* ============================================================
-   تنسيق تاريخ الميلاد تلقائياً أثناء الكتابة أو اللصق
-   ============================================================ */
+/* ---------- تنسيق تاريخ الميلاد ---------- */
 function formatBirthInputLive(el){
   let digits = el.value.replace(/\D/g, "").slice(0, 8);
   let formatted = digits;
@@ -1045,7 +1078,6 @@ function formatBirthInputLive(el){
   }
   el.value = formatted;
 }
-
 function attachBirthAutoFormat(id){
   const el = $(id);
   if(!el) return;
@@ -1065,6 +1097,13 @@ function birthDisplayToISO(text){
   return `${year}-${month}-${day}`;
 }
 
+/* ---------- إظهار/إخفاء حقل الوظيفة السابقة ---------- */
+function togglePrevRole(selectId, wrapId){
+  $(wrapId).style.display = $(selectId).value === "previous" ? "flex" : "none";
+}
+$("fExperience").addEventListener("change", () => togglePrevRole("fExperience", "fPrevRoleWrap"));
+$("eExperience").addEventListener("change", () => togglePrevRole("eExperience", "ePrevRoleWrap"));
+
 /* ---------------- إرسال البيانات ---------------- */
 $("frmMoatir").addEventListener("submit", async function(ev){
   ev.preventDefault();
@@ -1073,11 +1112,14 @@ $("frmMoatir").addEventListener("submit", async function(ev){
   const nameParts = fullName.split(/\s+/).filter(Boolean);
   const name = nameParts[0] || "";
   const lastName = nameParts.slice(1).join(" ");
+  const fatherName = $("fFather").value.trim();
   const birth = birthDisplayToISO($("fBirth").value);
   const electoralNum = $("fElectoralNum").value.trim();
   const phone = $("fPhone").value.trim();
   const educationLevel = $("fEducation").value;
   const notes = $("fNotes").value.trim();
+  let experience = $("fExperience").value || null;
+  const previousRole = experience === "previous" ? ($("fPrevRole").value.trim() || null) : null;
 
   if(!fullName){
     showStatus("يرجى تعبئة الاسم واللقب.", false);
@@ -1088,30 +1130,15 @@ $("frmMoatir").addEventListener("submit", async function(ev){
   btn.disabled = true;
 
   try{
-    // 1) فحص التكرار العام
-    if(!(await confirmIfDuplicates(name, lastName, electoralNum, null))){
+    // 1) فحص التكرار
+    if(!(await confirmIfDuplicates(name, lastName, electoralNum, null, fatherName, phone))){
       showStatus("تم إلغاء الحفظ.", false);
       return;
     }
 
-    // 2) جديد أم سابق؟ (بلا قيمة افتراضية)
-    let experience = await askChoice({
-      title: "هل المؤطر جديد أم سابق؟",
-      message: "المؤطر: " + fullName + "\n\nجديد = غير مسجّل في قوائمنا سابقًا\nسابق = مسجّل في قوائمنا من قبل",
-      choices: [
-        { label: "🔵 جديد", value: "new", cls: "btn-blue" },
-        { label: "سابق", value: "previous", cls: "btn-primary" },
-        { label: "إلغاء", value: null, cls: "btn-secondary" }
-      ]
-    });
-    if(!experience){
-      showStatus("تم إلغاء الحفظ.", false);
-      return;
-    }
-
-    // 3) تنبيه: اختار "جديد" لكن الاسم موجود فعلًا
+    // 2) تنبيه: اختار "جديد" لكن الاسم موجود فعلًا
     if(experience === "new"){
-      const sameName = findDuplicateMatches(name, lastName, "", null)
+      const sameName = findDuplicateMatches(name, lastName, "", null, fatherName, phone)
         .some(m => m.reasons.includes("نفس الاسم واللقب"));
       if(sameName){
         const choice = await askChoice({
@@ -1119,7 +1146,7 @@ $("frmMoatir").addEventListener("submit", async function(ev){
           message: "هذا الاسم موجود فعلًا في القائمة.\nهل هو فعلًا مؤطر جديد؟",
           choices: [
             { label: "نعم، هو جديد", value: "new", cls: "btn-blue" },
-            { label: "غيّر إلى سابق", value: "previous", cls: "btn-primary" },
+            { label: "غيّر إلى غير جديد", value: "previous", cls: "btn-primary" },
             { label: "إلغاء", value: null, cls: "btn-secondary" }
           ]
         });
@@ -1134,12 +1161,14 @@ $("frmMoatir").addEventListener("submit", async function(ev){
     const now = Date.now();
     const entry = {
       name, lastName,
+      fatherName: fatherName || null,
       birth: birth || null,
       electoralNum: electoralNum || null,
       phone: phone || null,
       educationLevel: educationLevel || null,
       notes: notes || null,
       experience,
+      previousRole: experience === "previous" ? previousRole : null,
       assignLevel: null,
       center: null,
       centerPosition: null,
@@ -1161,8 +1190,9 @@ $("frmMoatir").addEventListener("submit", async function(ev){
     btn.textContent = "جارٍ الحفظ...";
     await moatirineRef.push(entry);
     showStatus("تم تسجيل المؤطر بنجاح ✅", true);
-    showToast(experience === "new" ? "تم تسجيل مؤطر جديد 🔵" : "تم تسجيل المؤطر (سابق) ✅", "ok");
+    showToast(experience === "new" ? "تم تسجيل مؤطر جديد 🔵" : "تم تسجيل المؤطر ✅", "ok");
     $("frmMoatir").reset();
+    togglePrevRole("fExperience", "fPrevRoleWrap");
   }catch(err){
     console.error("خطأ أثناء الحفظ في Firestore:", err);
     showStatus("حدث خطأ أثناء الحفظ: " + err.message, false);
@@ -1175,6 +1205,7 @@ $("frmMoatir").addEventListener("submit", async function(ev){
 
 $("btnReset").addEventListener("click", () => {
   $("frmMoatir").reset();
+  togglePrevRole("fExperience", "fPrevRoleWrap");
   hideStatus();
 });
 
@@ -1198,7 +1229,9 @@ function renderTable(){
   tbody.innerHTML = "";
 
   const ids = Object.keys(allEntries);
-  $("totalCounter").innerHTML = "<b>" + ids.length + "</b> مسجّل";
+  const flaggedCount = ids.filter(id => allEntries[id].flagged).length;
+  $("totalCounter").innerHTML = "<b>" + (ids.length - flaggedCount) + "</b> مسجّل" +
+    (flaggedCount ? " <span style='color:#c0272d; font-size:12px;'>(+" + flaggedCount + " مُشار عليهم غير محتسبين)</span>" : "");
 
   let visibleCount = 0;
   const visibleIds = [];
@@ -1214,7 +1247,9 @@ function renderTable(){
       const birthRaw = (e.birth || "").toLowerCase();
       const phoneVal = (e.phone || "").toLowerCase();
       const electoralVal = (e.electoralNum || "").toLowerCase();
+      const fatherVal = (e.fatherName || "").toLowerCase();
       const matches = fullName.includes(search) ||
+        fatherVal.includes(search) ||
         electoralVal.includes(search) ||
         phoneVal.includes(search) ||
         birthFormatted.includes(search) ||
@@ -1232,6 +1267,10 @@ function renderTable(){
       ? `<span class="flag-note">🚩 ${escapeHtml(e.issueType || "مشكلة")}</span>`
       : "";
 
+    const prevNote = (e.experience === "previous")
+      ? `<span class="prev-note">غير جديد${e.previousRole ? " — وظيفته سابقًا: " + escapeHtml(e.previousRole) : ""}</span>`
+      : "";
+
     const missing = getMissingFields(e);
     const missingIcon = missing.length
       ? `<span class="missing-icon" title="بيانات ناقصة: ${escapeHtml(missing.join('، '))}">❓</span>`
@@ -1242,14 +1281,15 @@ function renderTable(){
     const tr = document.createElement("tr");
     const classes = [];
     if(e.experience === "new") classes.push("new-row");
-    if(e.flagged) classes.push("flagged-row"); // الأحمر له الأولوية (مُعرَّف لاحقًا في CSS)
+    if(e.flagged) classes.push("flagged-row");
     tr.className = classes.join(" ");
     tr.dataset.id = id;
     tr.innerHTML = `
       <td><input type="checkbox" class="rowCheckbox" data-id="${escapeHtml(id)}" ${selectedIds.has(id) ? "checked" : ""}></td>
       <td>
-        <span class="clickable-name" title="اضغط للتعديل" data-action="edit" data-id="${escapeHtml(id)}">${escapeHtml(e.name)} ${escapeHtml(e.lastName)}</span>${newBadge}${missingIcon}${flagNote}
+        <span class="clickable-name" title="اضغط للتعديل" data-action="edit" data-id="${escapeHtml(id)}">${escapeHtml(e.name)} ${escapeHtml(e.lastName)}</span>${newBadge}${missingIcon}${prevNote}${flagNote}
       </td>
+      <td>${e.fatherName ? escapeHtml(e.fatherName) : "—"}</td>
       <td>${e.birth ? formatDate(e.birth) : "—"}</td>
       <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
       <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
@@ -1266,14 +1306,12 @@ function renderTable(){
 
   $("emptyState").style.display = visibleCount === 0 ? "block" : "none";
 
-  // إزالة أي تحديد لمؤطرين لم يعودوا موجودين
   Array.from(selectedIds).forEach(id => { if(!allEntries[id]) selectedIds.delete(id); });
 
   updateSelectAllCheckboxState(visibleIds);
   updateBulkDeleteUI();
 }
 
-/* تفويض الأحداث على جسم الجدول (بدل onclick المضمّنة) */
 $("tblBody").addEventListener("click", function(ev){
   const target = ev.target.closest("[data-action]");
   if(!target) return;
@@ -1294,9 +1332,6 @@ $("tblBody").addEventListener("change", function(ev){
   updateBulkDeleteUI();
 });
 
-/* ============================================================
-   تحديد جماعي وحذف دفعة واحدة (حذف ناعم بسبب واحد)
-   ============================================================ */
 function updateBulkDeleteUI(){
   const btn = $("btnBulkDelete");
   const countEl = $("bulkDeleteCount");
@@ -1361,11 +1396,14 @@ function openEdit(id){
   if(!e) return;
   editTargetId = id;
   $("eFullName").value = ((e.name || "") + " " + (e.lastName || "")).trim();
+  $("eFather").value = e.fatherName || "";
   $("eBirth").value = e.birth ? formatDate(e.birth) : "";
   $("eElectoralNum").value = e.electoralNum || "";
   $("ePhone").value = e.phone || "";
   $("eEducation").value = e.educationLevel || "";
   $("eExperience").value = e.experience || "";
+  $("ePrevRole").value = e.previousRole || "";
+  togglePrevRole("eExperience", "ePrevRoleWrap");
   $("eNotes").value = e.notes || "";
   $("editModal").classList.add("show");
 }
@@ -1382,7 +1420,9 @@ $("btnSaveEdit").addEventListener("click", async () => {
   const eNameParts = eFullName.split(/\s+/).filter(Boolean);
   const name = eNameParts[0] || "";
   const lastName = eNameParts.slice(1).join(" ");
+  const fatherName = $("eFather").value.trim() || null;
   const electoralNum = $("eElectoralNum").value.trim() || null;
+  const phone = $("ePhone").value.trim() || null;
 
   if(!eFullName){
     showToast("الاسم واللقب إلزاميان.", "err");
@@ -1392,18 +1432,21 @@ $("btnSaveEdit").addEventListener("click", async () => {
   const btn = $("btnSaveEdit");
   btn.disabled = true;
   try{
-    if(!(await confirmIfDuplicates(name, lastName, electoralNum, editTargetId))){
+    if(!(await confirmIfDuplicates(name, lastName, electoralNum, editTargetId, fatherName, phone))){
       return;
     }
 
+    const experience = $("eExperience").value || null;
     const updated = {
       name,
       lastName,
+      fatherName,
       birth: birthDisplayToISO($("eBirth").value),
       electoralNum,
-      phone: $("ePhone").value.trim() || null,
+      phone,
       educationLevel: $("eEducation").value || null,
-      experience: $("eExperience").value || null,
+      experience,
+      previousRole: experience === "previous" ? ($("ePrevRole").value.trim() || null) : null,
       notes: $("eNotes").value.trim() || null
     };
     await moatirineRef.update(editTargetId, updated);
@@ -1418,13 +1461,34 @@ $("btnSaveEdit").addEventListener("click", async () => {
   }
 });
 
-/* ---------------- الإشارة / تمييز المؤطر بمشكلة ---------------- */
+/* ---------------- الإشارة ---------------- */
+const FLAG_PRESETS = [
+  "مترشح في الانتخابات",
+  "أخلّ بأخلاقيات المهنة في انتخابات سابقة",
+  "تخلّف عن الانتخابات السابقة"
+];
+
+$("flagReasonSelect").addEventListener("change", function(){
+  $("flagOtherWrap").style.display = this.value === "أخرى" ? "flex" : "none";
+});
+
 function openFlag(id){
   const e = allEntries[id];
   if(!e) return;
   flagTargetId = id;
   $("flagMoatirName").textContent = e.name + " " + (e.lastName || "");
-  $("flagIssueType").value = e.issueType || "";
+  const current = e.issueType || "";
+  if(!current){
+    $("flagReasonSelect").value = "";
+    $("flagIssueType").value = "";
+  } else if(FLAG_PRESETS.indexOf(current) !== -1){
+    $("flagReasonSelect").value = current;
+    $("flagIssueType").value = "";
+  } else {
+    $("flagReasonSelect").value = "أخرى";
+    $("flagIssueType").value = current.replace(/^أخرى:\s*/, "");
+  }
+  $("flagOtherWrap").style.display = $("flagReasonSelect").value === "أخرى" ? "flex" : "none";
   $("flagModal").classList.add("show");
 }
 
@@ -1435,10 +1499,19 @@ $("btnCancelFlag").addEventListener("click", () => {
 
 $("btnSaveFlag").addEventListener("click", async () => {
   if(!flagTargetId) return;
-  const issueType = $("flagIssueType").value.trim();
-  if(!issueType){
-    showToast("يرجى تحديد نوع المشكلة.", "err");
+  const sel = $("flagReasonSelect").value;
+  if(!sel){
+    showToast("يرجى اختيار سبب الإشارة.", "err");
     return;
+  }
+  let issueType = sel;
+  if(sel === "أخرى"){
+    const txt = $("flagIssueType").value.trim();
+    if(!txt){
+      showToast("يرجى كتابة سبب الإشارة.", "err");
+      return;
+    }
+    issueType = "أخرى: " + txt;
   }
   try{
     await moatirineRef.update(flagTargetId, { flagged: true, issueType, issueReason: null });
@@ -1490,16 +1563,35 @@ function computeDuplicateGroups(){
 
   Object.keys(allEntries).forEach(id => {
     const e = allEntries[id];
-    const nameKey = ((e.name || "") + " " + (e.lastName || "")).trim().toLowerCase();
+    const nameKey = normText((e.name || "") + " " + (e.lastName || ""));
     if(nameKey){ (byName[nameKey] = byName[nameKey] || []).push(id); }
     if(e.electoralNum){ (byElectoral[e.electoralNum] = byElectoral[e.electoralNum] || []).push(id); }
     if(e.birth){ (byBirth[e.birth] = byBirth[e.birth] || []).push(id); }
   });
 
   const groups = [];
+
+  // الأسماء: نفس الاسم واللقب، مع استبعاد من اختلف اسم أبيه أو هاتفه
   Object.keys(byName).forEach(k => {
-    if(byName[k].length > 1) groups.push({ reason: "نفس الاسم واللقب", ids: byName[k] });
+    const list = byName[k];
+    if(list.length < 2) return;
+    const parent = {};
+    list.forEach(id => parent[id] = id);
+    const find = (x) => { while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    for(let i = 0; i < list.length; i++){
+      for(let j = i + 1; j < list.length; j++){
+        if(sameIdentityCompatible(allEntries[list[i]], allEntries[list[j]])){
+          parent[find(list[i])] = find(list[j]);
+        }
+      }
+    }
+    const clusters = {};
+    list.forEach(id => { const r = find(id); (clusters[r] = clusters[r] || []).push(id); });
+    Object.keys(clusters).forEach(r => {
+      if(clusters[r].length > 1) groups.push({ reason: "نفس الاسم واللقب", ids: clusters[r] });
+    });
   });
+
   Object.keys(byElectoral).forEach(k => {
     if(byElectoral[k].length > 1) groups.push({ reason: "نفس الرقم الانتخابي", ids: byElectoral[k] });
   });
@@ -1550,6 +1642,7 @@ function renderDuplicates(){
       return `<tr>
         <td class="dup-select-cell"><input type="checkbox" class="dupRowCheckbox" data-id="${escapeHtml(id)}" ${checked} title="تحديد للحذف"></td>
         <td>${escapeHtml(e.name)} ${escapeHtml(e.lastName)}${newBadge}</td>
+        <td>${e.fatherName ? escapeHtml(e.fatherName) : "—"}</td>
         <td>${e.birth ? formatDate(e.birth) : "—"}</td>
         <td>${e.electoralNum ? escapeHtml(e.electoralNum) : "—"}</td>
         <td>${e.phone ? escapeHtml(e.phone) : "—"}</td>
@@ -1569,7 +1662,7 @@ function renderDuplicates(){
       </div>
       <div class="table-wrap" style="border:none; border-radius:0;">
         <table>
-          <thead><tr><th style="width:34px;"></th><th>الاسم واللقب</th><th>تاريخ الميلاد</th><th>الرقم الانتخابي</th><th>الهاتف</th><th>إجراء</th></tr></thead>
+          <thead><tr><th style="width:34px;"></th><th>الاسم واللقب</th><th>اسم الأب</th><th>تاريخ الميلاد</th><th>الرقم الانتخابي</th><th>الهاتف</th><th>إجراء</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -1583,7 +1676,6 @@ function renderDuplicates(){
   updateDupGroupCounters();
 }
 
-/* تفويض أحداث تبويب المتشابهة */
 $("duplicatesContent").addEventListener("change", function(ev){
   const cb = ev.target.closest(".dupRowCheckbox");
   if(!cb) return;
