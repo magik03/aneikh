@@ -1453,7 +1453,8 @@ function findDuplicateMatches(name, lastName, electoralNum, excludeId){
     const e = allEntries[id];
     const eFullKey = ((e.name || "") + " " + (e.lastName || "")).trim().toLowerCase();
     const reasons = [];
-    if(fullKey && eFullKey === fullKey) reasons.push("نفس الاسم واللقب");
+    const electoralDiffers = !!(electoralNum && e.electoralNum && e.electoralNum !== electoralNum);
+    if(fullKey && eFullKey === fullKey && !electoralDiffers) reasons.push("نفس الاسم واللقب");
     if(electoralNum && e.electoralNum && e.electoralNum === electoralNum) reasons.push("نفس الرقم الانتخابي");
     if(reasons.length) matches.push({ id, e, reasons });
   });
@@ -2511,18 +2512,43 @@ function computeDuplicateGroups(){
     if(e.birth){ (byBirth[e.birth] = byBirth[e.birth] || []).push(id); }
   });
 
+  // يُقسّم كل تجمّع إلى مجموعات فرعية لا يوجد بين أفرادها تعارض في الرقم الانتخابي
   const groups = [];
-  Object.keys(byName).forEach(k => {
-    if(byName[k].length > 1) groups.push({ reason: "نفس الاسم واللقب", ids: byName[k] });
-  });
-  Object.keys(byElectoral).forEach(k => {
-    if(byElectoral[k].length > 1) groups.push({ reason: "نفس الرقم الانتخابي", ids: byElectoral[k] });
-  });
-  Object.keys(byBirth).forEach(k => {
-    if(byBirth[k].length > 1) groups.push({ reason: "نفس تاريخ الميلاد", ids: byBirth[k] });
-  });
+  const addGroups = (bucket, reason) => {
+    Object.keys(bucket).forEach(k => {
+      splitByElectoralConflict(bucket[k]).forEach(ids => {
+        if(ids.length > 1) groups.push({ reason, ids });
+      });
+    });
+  };
+  addGroups(byName, "نفس الاسم واللقب");
+  addGroups(byElectoral, "نفس الرقم الانتخابي");
+  addGroups(byBirth, "نفس تاريخ الميلاد");
 
   return groups;
+}
+
+/* تعارض الرقم الانتخابي: رقمان موجودان ومختلفان = شخصان مختلفان */
+function electoralConflict(a, b){
+  return !!(a.electoralNum && b.electoralNum &&
+            String(a.electoralNum).trim() !== String(b.electoralNum).trim());
+}
+
+/* تجميع المعرّفات في مجموعات مترابطة بحيث لا يُجمع شخصان رقمهما الانتخابي مختلف */
+function splitByElectoralConflict(ids){
+  const parent = {};
+  ids.forEach(id => { parent[id] = id; });
+  const find = (x) => { while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for(let i = 0; i < ids.length; i++){
+    for(let j = i + 1; j < ids.length; j++){
+      if(!electoralConflict(allEntries[ids[i]], allEntries[ids[j]])){
+        parent[find(ids[i])] = find(ids[j]);
+      }
+    }
+  }
+  const clusters = {};
+  ids.forEach(id => { (clusters[find(id)] = clusters[find(id)] || []).push(id); });
+  return Object.keys(clusters).map(k => clusters[k]);
 }
 
 function updateDuplicatesBadge(){
