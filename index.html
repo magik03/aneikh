@@ -10,6 +10,8 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<!-- مكتبة قراءة/كتابة ملفات Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <!--
 ============================================================
@@ -622,6 +624,13 @@
         <input type="checkbox" id="filterFlaggedOnly">
         إظهار المُشار عليهم فقط 🚩
       </label>
+    </div>
+
+    <div class="actions" style="margin-top:0; margin-bottom:14px;">
+      <button type="button" class="btn-blue btn-small" id="btnImportXlsx">📥 استيراد من Excel</button>
+      <button type="button" class="btn-secondary btn-small" id="btnExportXlsx">📤 تصدير إلى Excel</button>
+      <button type="button" class="btn-secondary btn-small" id="btnTemplateXlsx">📄 تحميل نموذج الملف</button>
+      <input type="file" id="fileImportXlsx" accept=".xlsx,.xls,.csv" style="display:none">
     </div>
 
     <div class="table-wrap">
@@ -2042,6 +2051,363 @@ $("btnSmsStop").addEventListener("click", () => {
   smsQueue = [];
   smsIndex = 0;
   renderSmsRecipients();
+});
+
+/* ============================================================
+   استيراد وتصدير Excel
+   - الاستيراد: المؤطر المسجّل = نفس الاسم واللقب + نفس تاريخ الميلاد
+     (دون تعارض في الرقم الانتخابي أو اسم الأب). لا يُضاف مرة ثانية،
+     وتُملأ حقوله الفارغة فقط. القيم المكتوبة المختلفة تظهر كـ«تعارض»
+     وتبقى كما هي. تاريخ الميلاد الناقص أو الحالات الغامضة → «للمراجعة».
+   ============================================================ */
+const EDU_LEVELS = ["بدون مستوى", "إبتدائي", "متوسط", "ثانوي", "ليسانس", "ماستر", "ماجستير"];
+const XLSX_HEADERS = ["الاسم واللقب", "اسم الأب", "تاريخ الميلاد", "الرقم الانتخابي", "الهاتف", "المستوى التعليمي", "جديد / غير جديد", "ملاحظات"];
+
+function normArabic(s){
+  return String(s == null ? "" : s)
+    .replace(/[\u064B-\u0652\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function toEnDigits(s){
+  return String(s).replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 1632))
+                  .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 1776));
+}
+
+function cellStr(v){
+  if(v == null) return "";
+  return toEnDigits(String(v)).trim();
+}
+
+function mapHeader(h){
+  const t = normArabic(h);
+  if(!t) return null;
+  if(t.includes("الاب") || t.includes("والد")) return "father";
+  if(t.includes("ميلاد") || t.includes("ازدياد") || t.includes("تاريخ")) return "birth";
+  if(t.includes("انتخاب")) return "electoral";
+  if(t.includes("هاتف") || t.includes("جوال") || t.includes("موبايل") || t.includes("تلفون") || t.includes("phone")) return "phone";
+  if(t.includes("مستوي")) return "edu";
+  if(t.includes("ملاحظ")) return "notes";
+  if(t.includes("جديد")) return "exp";
+  if(t.includes("اسم") && t.includes("لقب")) return "full";
+  if(t.includes("لقب")) return "last";
+  if(t.includes("اسم")) return "nameonly";
+  return null;
+}
+
+function parseBirthCell(v){
+  if(v == null || v === "") return null;
+  if(typeof v === "number"){
+    if(v > 1000 && v < 80000 && window.XLSX){
+      const d = XLSX.SSF.parse_date_code(v);
+      if(d && d.y && d.m && d.d){
+        return d.y + "-" + String(d.m).padStart(2, "0") + "-" + String(d.d).padStart(2, "0");
+      }
+    }
+    return null;
+  }
+  const t = cellStr(v);
+  let m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  let y, mo, d;
+  if(m){ d = Number(m[1]); mo = Number(m[2]); y = m[3]; }
+  else {
+    m = t.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+    if(!m) return null;
+    y = m[1]; mo = Number(m[2]); d = Number(m[3]);
+  }
+  if(mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return y + "-" + String(mo).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+}
+
+function parseImportRows(rows){
+  const hi = rows.findIndex(r => r && r.some(c => String(c == null ? "" : c).trim() !== ""));
+  if(hi < 0) return { error: "الملف فارغ." };
+  const map = {};
+  rows[hi].forEach((h, i) => { const k = mapHeader(h); if(k && map[k] === undefined) map[k] = i; });
+
+  let fullCol = map.full, firstCol, lastCol = map.last;
+  if(map.nameonly !== undefined){
+    if(map.last !== undefined) firstCol = map.nameonly;
+    else if(fullCol === undefined) fullCol = map.nameonly;
+  }
+  if(fullCol === undefined && firstCol === undefined){
+    return { error: "لم أجد عمود «الاسم واللقب» في الملف. حمّل «نموذج الملف» واستعمل عناوينه." };
+  }
+
+  const records = [];
+  for(let i = hi + 1; i < rows.length; i++){
+    const r = rows[i];
+    if(!r) continue;
+    const get = (k) => map[k] === undefined ? "" : r[map[k]];
+    let name = "", lastName = "";
+    if(fullCol !== undefined){
+      const parts = cellStr(r[fullCol]).split(/\s+/).filter(Boolean);
+      name = parts[0] || "";
+      lastName = parts.slice(1).join(" ");
+    } else {
+      name = cellStr(r[firstCol]);
+      lastName = lastCol !== undefined ? cellStr(r[lastCol]) : "";
+    }
+    if(!name) continue;
+
+    let phone = cellStr(get("phone")).replace(/[\s\-.]/g, "");
+    if(/^[567]\d{8}$/.test(phone)) phone = "0" + phone;
+
+    const edRaw = normArabic(cellStr(get("edu")));
+    const edu = EDU_LEVELS.find(l => normArabic(l) === edRaw) || null;
+
+    const expT = normArabic(cellStr(get("exp")));
+    let experience = null;
+    if(expT){
+      if(expT.includes("غير") || expT.includes("سابق")) experience = "previous";
+      else if(expT.includes("جديد")) experience = "new";
+    }
+
+    records.push({
+      name, lastName,
+      fatherName: cellStr(get("father")) || null,
+      birth: parseBirthCell(get("birth")),
+      electoralNum: cellStr(get("electoral")) || null,
+      phone: phone || null,
+      educationLevel: edu,
+      notes: cellStr(get("notes")) || null,
+      experience
+    });
+  }
+  return { records };
+}
+
+const FIELD_LABELS = {
+  fatherName: "اسم الأب", birth: "تاريخ الميلاد", electoralNum: "الرقم الانتخابي",
+  phone: "الهاتف", educationLevel: "المستوى التعليمي", notes: "الملاحظات", experience: "جديد / غير جديد"
+};
+
+function importValueLabel(field, v){
+  if(field === "birth") return formatDate(v);
+  if(field === "experience") return v === "new" ? "جديد" : (v === "previous" ? "غير جديد" : "—");
+  return String(v);
+}
+
+function sameFieldValue(field, a, b){
+  if(field === "phone") return cleanPhone(a) === cleanPhone(b);
+  return normArabic(a) === normArabic(b);
+}
+
+function planImport(records){
+  const FIELDS = ["fatherName", "birth", "electoralNum", "phone", "educationLevel", "notes", "experience"];
+  const pool = Object.keys(allEntries).map(id => ({ id, data: Object.assign({}, allEntries[id]), isNew: false, changes: {} }));
+  const review = [];
+  const conflicts = [];
+  let unchanged = 0;
+
+  records.forEach(r => {
+    const key = normArabic(r.name + " " + r.lastName);
+    const label = (r.name + " " + r.lastName).trim();
+    const sameName = pool.filter(p => normArabic((p.data.name || "") + " " + (p.data.lastName || "")) === key);
+
+    // نفس الاسم واللقب + نفس تاريخ الميلاد (دون تعارض في الرقم الانتخابي أو اسم الأب)
+    const cands = sameName.filter(p => r.birth && p.data.birth && r.birth === p.data.birth && sameIdentityCompatible(r, p.data));
+
+    if(cands.length > 1){
+      review.push(label + " — أكثر من مؤطر مطابق");
+      return;
+    }
+
+    if(cands.length === 0){
+      // نفس الاسم لكن تاريخ الميلاد ناقص في أحد الطرفين → للمراجعة
+      const missingBirth = sameName.some(p => (!r.birth || !p.data.birth) && sameIdentityCompatible(r, p.data));
+      if(missingBirth){
+        review.push(label + " — تاريخ الميلاد ناقص، لا يمكن الجزم أنه نفس الشخص");
+        return;
+      }
+      // نفس الرقم الانتخابي لمؤطر باسم مختلف → للمراجعة
+      const sameElec = r.electoralNum && pool.some(p => p.data.electoralNum && normText(p.data.electoralNum) === normText(r.electoralNum));
+      if(sameElec){
+        review.push(label + " — نفس الرقم الانتخابي لمؤطر آخر");
+        return;
+      }
+      pool.push({ id: null, data: Object.assign({}, r), isNew: true, changes: {} });
+      return;
+    }
+
+    const p = cands[0];
+    let changed = false;
+    FIELDS.forEach(f => {
+      if(!r[f]) return;
+      if(!p.data[f]){
+        p.data[f] = r[f];
+        p.changes[f] = r[f];
+        changed = true;
+      } else if(!sameFieldValue(f, p.data[f], r[f])){
+        conflicts.push({ label, field: f, oldVal: p.data[f], newVal: r[f] });
+      }
+    });
+    if(!changed) unchanged++;
+  });
+
+  const added = pool.filter(p => p.isNew).length;
+  const updatedList = pool.filter(p => !p.isNew && Object.keys(p.changes).length > 0);
+  return { pool, review, conflicts, added, updated: updatedList.length, updatedList, unchanged };
+}
+
+function buildImportMessage(plan){
+  const lines = [];
+  lines.push("✅ مؤطرون جدد سيُضافون: " + plan.added);
+  lines.push("🔄 مؤطرون مسجّلون سيُحيَّنون: " + plan.updated);
+  plan.updatedList.slice(0, 10).forEach(p => {
+    const fields = Object.keys(p.changes).map(f => "+ " + FIELD_LABELS[f]).join("، ");
+    lines.push("   • " + ((p.data.name || "") + " " + (p.data.lastName || "")).trim() + ": " + fields);
+  });
+  if(plan.updatedList.length > 10) lines.push("   … و" + (plan.updatedList.length - 10) + " آخرين");
+  lines.push("➖ مسجّلون بلا تغيير: " + plan.unchanged);
+
+  if(plan.conflicts.length){
+    lines.push("");
+    lines.push("⚠️ تعارض (تبقى القيمة الحالية دون تغيير): " + plan.conflicts.length);
+    plan.conflicts.slice(0, 10).forEach(c => {
+      lines.push("   • " + c.label + " — " + FIELD_LABELS[c.field] +
+        ": الحالية " + importValueLabel(c.field, c.oldVal) + " | الجديدة " + importValueLabel(c.field, c.newVal));
+    });
+    if(plan.conflicts.length > 10) lines.push("   … و" + (plan.conflicts.length - 10) + " آخرين");
+  }
+  if(plan.review.length){
+    lines.push("");
+    lines.push("🔎 للمراجعة (لن يُضافوا ولن يُحيَّنوا): " + plan.review.length);
+    plan.review.slice(0, 10).forEach(t => lines.push("   • " + t));
+    if(plan.review.length > 10) lines.push("   … و" + (plan.review.length - 10) + " آخرين");
+  }
+  return lines.join("\n");
+}
+
+async function applyImportPlan(plan){
+  const now = Date.now();
+  const ops = [];
+  let seq = 0;
+  plan.pool.forEach(p => {
+    if(p.isNew){
+      const d = p.data;
+      ops.push({ type: "add", entry: {
+        name: d.name, lastName: d.lastName || "",
+        fatherName: d.fatherName || null,
+        birth: d.birth || null,
+        electoralNum: d.electoralNum || null,
+        phone: d.phone || null,
+        educationLevel: d.educationLevel || null,
+        notes: d.notes || null,
+        experience: d.experience || null,
+        previousRole: null,
+        assignLevel: null, center: null, centerPosition: null,
+        officeNumber: null, officeType: null, officePosition: null,
+        flagged: false, issueType: null, issueReason: null,
+        deleted: false, deletedAt: null, deleteReason: null, deletedByClient: null,
+        clientId: CLIENT_ID,
+        createdAt: now + (seq++),
+        updatedAt: now
+      }});
+    } else if(Object.keys(p.changes).length > 0){
+      ops.push({ type: "upd", id: p.id, changes: p.changes });
+    }
+  });
+
+  for(let i = 0; i < ops.length; i += 400){
+    const batch = db.batch();
+    ops.slice(i, i + 400).forEach(o => {
+      if(o.type === "add") batch.set(collectionRef.doc(), o.entry);
+      else batch.update(collectionRef.doc(o.id), Object.assign({}, o.changes, { updatedAt: now }));
+    });
+    await batch.commit();
+  }
+}
+
+function xlsxReady(){
+  if(!window.XLSX){
+    showToast("مكتبة Excel لم تُحمَّل. تأكد من الاتصال بالإنترنت وأعد تحميل الصفحة.", "err");
+    return false;
+  }
+  return true;
+}
+
+$("btnImportXlsx").addEventListener("click", () => {
+  if(!xlsxReady()) return;
+  $("fileImportXlsx").click();
+});
+
+$("fileImportXlsx").addEventListener("change", async function(){
+  const file = this.files && this.files[0];
+  this.value = "";
+  if(!file || !xlsxReady()) return;
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+    const parsed = parseImportRows(rows);
+    if(parsed.error){ showToast(parsed.error, "err"); return; }
+    if(parsed.records.length === 0){ showToast("لا توجد صفوف صالحة في الملف.", "err"); return; }
+
+    const plan = planImport(parsed.records);
+
+    if(plan.added === 0 && plan.updated === 0){
+      if(plan.conflicts.length === 0 && plan.review.length === 0){
+        showToast("لا يوجد ما يُضاف أو يُحيَّن: كل المؤطرين مسجّلون ومعلوماتهم كاملة.", "info");
+        return;
+      }
+      await askChoice({
+        title: "📥 لا شيء للتنفيذ",
+        message: buildImportMessage(plan),
+        choices: [{ label: "حسنًا", value: true, cls: "btn-primary" }]
+      });
+      return;
+    }
+
+    const ok = await askConfirm("📥 تأكيد الاستيراد", buildImportMessage(plan), "تنفيذ");
+    if(!ok){ showToast("تم إلغاء الاستيراد.", "info"); return; }
+
+    showToast("جارٍ الاستيراد...", "info");
+    await applyImportPlan(plan);
+    showToast("تم الاستيراد ✅ (" + plan.added + " جديد، " + plan.updated + " تحيين)", "ok");
+  }catch(err){
+    console.error("خطأ أثناء الاستيراد:", err);
+    showToast("تعذّر الاستيراد: " + err.message, "err");
+  }
+});
+
+function downloadXlsx(aoa, fileName, widths){
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = widths.map(w => ({ wch: w }));
+  const wb = XLSX.utils.book_new();
+  wb.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(wb, ws, "المؤطرون");
+  XLSX.writeFile(wb, fileName);
+}
+
+$("btnExportXlsx").addEventListener("click", () => {
+  if(!xlsxReady()) return;
+  const ids = Object.keys(allEntries).sort((a, b) => (allEntries[a].createdAt || 0) - (allEntries[b].createdAt || 0));
+  if(ids.length === 0){ showToast("لا يوجد مؤطرون للتصدير.", "err"); return; }
+  const aoa = [XLSX_HEADERS];
+  ids.forEach(id => {
+    const e = allEntries[id];
+    aoa.push([
+      ((e.name || "") + " " + (e.lastName || "")).trim(),
+      e.fatherName || "",
+      e.birth ? formatDate(e.birth) : "",
+      e.electoralNum || "",
+      e.phone || "",
+      e.educationLevel || "",
+      e.experience === "new" ? "جديد" : (e.experience === "previous" ? "غير جديد" : ""),
+      e.notes || ""
+    ]);
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  downloadXlsx(aoa, "المؤطرون_" + today + ".xlsx", [26, 16, 14, 16, 14, 16, 14, 30]);
+  showToast("تم تصدير " + ids.length + " مؤطر 📤", "ok");
+});
+
+$("btnTemplateXlsx").addEventListener("click", () => {
+  if(!xlsxReady()) return;
+  downloadXlsx([XLSX_HEADERS], "نموذج_استيراد_المؤطرين.xlsx", [26, 16, 14, 16, 14, 16, 14, 30]);
 });
 
 /* ============================================================
