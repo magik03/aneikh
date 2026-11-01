@@ -889,6 +889,21 @@
   </div>
 </div>
 
+<!-- Modal اسم القالب (بديل window.prompt الذي لا يعمل في كثير من متصفحات الهاتف) -->
+<div class="modal-overlay" id="tplNameModal" style="z-index:60;">
+  <div class="modal">
+    <h3>💾 حفظ كقالب جديد</h3>
+    <div class="field" style="margin-bottom:14px;">
+      <label>اسم القالب <span class="req">*</span></label>
+      <input type="text" id="tplNameInput" placeholder="مثال: دعوة لاجتماع">
+    </div>
+    <div class="actions">
+      <button type="button" class="btn-primary" id="btnTplNameOk">حفظ</button>
+      <button type="button" class="btn-secondary" id="btnTplNameCancel">إلغاء</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal اختيار عام -->
 <div class="modal-overlay" id="choiceModal" style="z-index:60;">
   <div class="modal">
@@ -1827,6 +1842,7 @@ const smsSent = new Set();
 let smsQueue = [];
 let smsIndex = 0;
 let smsQueueText = "";
+let pendingTemplateId = null; // القالب الذي حُفظ للتو ويجب تحديده في القائمة عند وصوله
 
 function cleanPhone(p){ return String(p == null ? "" : p).replace(/[^\d+]/g, ""); }
 
@@ -1856,7 +1872,14 @@ function renderTemplateSelect(){
       o.textContent = "📄 " + (smsTemplates[id].name || "قالب");
       sel.appendChild(o);
     });
-  if(keep && smsTemplates[keep]) sel.value = keep;
+  if(pendingTemplateId && smsTemplates[pendingTemplateId]){
+    // القالب الذي حُفظ للتو: يُحدَّد تلقائيًا بعد وصوله
+    sel.value = pendingTemplateId;
+    try{ localStorage.setItem("moatir_sms_tpl", pendingTemplateId); }catch(err){}
+    pendingTemplateId = null;
+  } else if(keep && smsTemplates[keep]){
+    sel.value = keep;
+  }
 }
 
 templatesRef.onSnapshot(
@@ -1868,7 +1891,7 @@ templatesRef.onSnapshot(
     if(first){
       try{
         const last = localStorage.getItem("moatir_sms_tpl");
-        if(last && smsTemplates[last]){
+        if(last && smsTemplates[last] && !$("smsText").value.trim()){
           $("smsTemplateSelect").value = last;
           $("smsText").value = smsTemplates[last].text || "";
         }
@@ -1900,18 +1923,45 @@ document.querySelectorAll("[data-ins]").forEach(b => {
   });
 });
 
+/* نافذة طلب اسم القالب (بديل window.prompt) */
+function askTemplateName(){
+  return new Promise(resolve => {
+    const modal = $("tplNameModal");
+    const inp = $("tplNameInput");
+    inp.value = "";
+    modal.classList.add("show");
+    setTimeout(() => inp.focus(), 50);
+    const finish = (v) => { modal.classList.remove("show"); resolve(v); };
+    $("btnTplNameOk").onclick = () => {
+      const v = inp.value.trim();
+      if(!v){ showToast("اكتب اسم القالب.", "err"); return; }
+      finish(v);
+    };
+    $("btnTplNameCancel").onclick = () => finish(null);
+    inp.onkeydown = (ev) => {
+      if(ev.key === "Enter"){ ev.preventDefault(); $("btnTplNameOk").click(); }
+    };
+  });
+}
+
 $("btnSaveTemplateNew").addEventListener("click", async () => {
   const text = $("smsText").value.trim();
   if(!text){ showToast("اكتب نص الرسالة أولًا.", "err"); return; }
-  const name = (window.prompt("اسم القالب (مثال: دعوة لاجتماع):") || "").trim();
+  const name = await askTemplateName();
   if(!name) return;
+  const btn = $("btnSaveTemplateNew");
+  btn.disabled = true;
   try{
-    const ref = await templatesRef.add({ name, text, createdAt: Date.now() });
-    $("smsTemplateSelect").value = ref.id;
-    try{ localStorage.setItem("moatir_sms_tpl", ref.id); }catch(err){}
+    const ref = templatesRef.doc();
+    pendingTemplateId = ref.id;
+    await ref.set({ name, text, createdAt: Date.now() });
     showToast("تم حفظ القالب ✅", "ok");
   }catch(err){
+    pendingTemplateId = null;
+    console.error("خطأ حفظ القالب:", err);
     showToast("تعذّر حفظ القالب: " + err.message, "err");
+  }finally{
+    btn.disabled = false;
   }
 });
 
