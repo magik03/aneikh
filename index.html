@@ -761,7 +761,7 @@
         <span class="badge" id="dupCountBadge">0 حالة</span>
       </h2>
       <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
-        يتم هنا تجميع المؤطرين بنفس الاسم واللقب في الحالات التالية: (1) نفس تاريخ الميلاد (ويُلغى التشابه إذا اختلف الرقم الانتخابي أو اسم الأب عند وجودهما معًا)، (2) نفس الرقم الانتخابي مع عدم تعارض تاريخ الميلاد، (3) نفس الرقم الانتخابي لكن تاريخ الميلاد مختلف (حالة تحتاج مراجعة، قد تكون خطأ إدخال). حدّد المؤطر المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
+        يتم هنا تجميع المؤطرين المتشابهين. عند اتفاق الاسم واللقب تكون الحالات التالية: (1) نفس تاريخ الميلاد (ويُلغى التشابه إذا اختلف الرقم الانتخابي أو اسم الأب عند وجودهما معًا)، (2) نفس الرقم الانتخابي مع عدم تعارض تاريخ الميلاد، (3) نفس الرقم الانتخابي لكن تاريخ الميلاد مختلف (حالة تحتاج مراجعة، قد تكون خطأ إدخال). كما يظهر هنا كل مؤطرين يتشاركان نفس الرقم الانتخابي مهما كان الاسم أو تاريخ الميلاد. حدّد المؤطر المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
       </p>
       <div id="duplicatesContent"></div>
     </div>
@@ -1230,9 +1230,10 @@ function birthsConflict(a, b){
 function similarReason(a, b){
   const na = normText((a.name || "") + " " + (a.lastName || ""));
   const nb = normText((b.name || "") + " " + (b.lastName || ""));
-  if(!na || na !== nb) return null;
-  if(a.birth && b.birth && a.birth === b.birth && sameIdentityCompatible(a, b)) return "birth";
   const ea = normText(a.electoralNum), eb = normText(b.electoralNum);
+  // نفس الرقم الانتخابي باسم مختلف → يُعدّ تشابهًا أيضًا (الاسم وتاريخ الميلاد لا يهمّان)
+  if(!na || na !== nb) return (ea && eb && ea === eb) ? "electoralAny" : null;
+  if(a.birth && b.birth && a.birth === b.birth && sameIdentityCompatible(a, b)) return "birth";
   if(ea && eb && ea === eb){
     return birthsConflict(a, b) ? "conflict" : "electoral";
   }
@@ -1241,6 +1242,7 @@ function similarReason(a, b){
 
 function reasonText(r){
   if(r === "electoral") return "نفس الاسم واللقب والرقم الانتخابي";
+  if(r === "electoralAny") return "نفس الرقم الانتخابي (باسم مختلف)";
   if(r === "conflict") return "نفس الاسم والرقم الانتخابي لكن تاريخ الميلاد مختلف";
   return "نفس الاسم واللقب وتاريخ الميلاد";
 }
@@ -1351,7 +1353,8 @@ $("frmMoatir").addEventListener("submit", async function(ev){
 
     // 2) تنبيه: اختار "جديد" لكن الاسم موجود فعلًا
     if(experience === "new"){
-      const sameName = findDuplicateMatches(candidate, null).length > 0;
+      const candKey = normText(name + " " + lastName);
+      const sameName = findDuplicateMatches(candidate, null).some(m => normText((m.e.name || "") + " " + (m.e.lastName || "")) === candKey);
       if(sameName){
         const choice = await askChoice({
           title: "⚠️ هذا الاسم مسجّل من قبل",
@@ -2523,45 +2526,63 @@ $("btnTemplateXlsx").addEventListener("click", () => {
    مع استبعاد من اختلف رقمه الانتخابي أو اسم أبيه.
    ============================================================ */
 function computeDuplicateGroups(){
-  const buckets = {};
-  Object.keys(allEntries).forEach(id => {
+  const ids = Object.keys(allEntries);
+  const parent = {};
+  ids.forEach(id => parent[id] = id);
+  const find = (x) => { while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const reasons = {};
+  const link = (i, j) => {
+    const why = similarReason(allEntries[i], allEntries[j]);
+    if(!why) return;
+    parent[find(i)] = find(j);
+    (reasons[i] = reasons[i] || {})[why] = true;
+    (reasons[j] = reasons[j] || {})[why] = true;
+  };
+
+  // 1) نفس الاسم واللقب (ميلاد / رقم انتخابي)
+  const byName = {};
+  ids.forEach(id => {
     const e = allEntries[id];
-    const nameKey = normText((e.name || "") + " " + (e.lastName || ""));
-    if(!nameKey) return;
-    (buckets[nameKey] = buckets[nameKey] || []).push(id);
+    const k = normText((e.name || "") + " " + (e.lastName || ""));
+    if(k) (byName[k] = byName[k] || []).push(id);
+  });
+  Object.keys(byName).forEach(k => {
+    const list = byName[k];
+    for(let i = 0; i < list.length; i++)
+      for(let j = i + 1; j < list.length; j++) link(list[i], list[j]);
+  });
+
+  // 2) نفس الرقم الانتخابي مهما كان الاسم أو تاريخ الميلاد
+  const byElec = {};
+  ids.forEach(id => {
+    const k = normText(allEntries[id].electoralNum);
+    if(k) (byElec[k] = byElec[k] || []).push(id);
+  });
+  Object.keys(byElec).forEach(k => {
+    const list = byElec[k];
+    for(let i = 0; i < list.length; i++)
+      for(let j = i + 1; j < list.length; j++) link(list[i], list[j]);
+  });
+
+  const clusters = {};
+  ids.forEach(id => {
+    if(!reasons[id]) return;
+    const r = find(id);
+    (clusters[r] = clusters[r] || []).push(id);
   });
 
   const groups = [];
-  Object.keys(buckets).forEach(k => {
-    const list = buckets[k];
-    if(list.length < 2) return;
-    const parent = {};
-    list.forEach(id => parent[id] = id);
-    const find = (x) => { while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
-    const reasons = {};
-    for(let i = 0; i < list.length; i++){
-      for(let j = i + 1; j < list.length; j++){
-        const why = similarReason(allEntries[list[i]], allEntries[list[j]]);
-        if(why){
-          parent[find(list[i])] = find(list[j]);
-          (reasons[list[i]] = reasons[list[i]] || {})[why] = true;
-          (reasons[list[j]] = reasons[list[j]] || {})[why] = true;
-        }
-      }
-    }
-    const clusters = {};
-    list.forEach(id => { const r = find(id); (clusters[r] = clusters[r] || []).push(id); });
-    Object.keys(clusters).forEach(r => {
-      const ids = clusters[r];
-      if(ids.length < 2) return;
-      const has = {};
-      ids.forEach(id => Object.keys(reasons[id] || {}).forEach(x => has[x] = true));
-      const parts = [];
-      if(has.birth) parts.push("نفس الاسم وتاريخ الميلاد");
-      if(has.electoral) parts.push("نفس الاسم والرقم الانتخابي");
-      if(has.conflict) parts.push("رقم انتخابي متطابق وميلاد مختلف");
-      groups.push({ reason: parts.join(" + "), ids });
-    });
+  Object.keys(clusters).forEach(r => {
+    const g = clusters[r];
+    if(g.length < 2) return;
+    const has = {};
+    g.forEach(id => Object.keys(reasons[id] || {}).forEach(x => has[x] = true));
+    const parts = [];
+    if(has.birth) parts.push("نفس الاسم وتاريخ الميلاد");
+    if(has.electoral) parts.push("نفس الاسم والرقم الانتخابي");
+    if(has.conflict) parts.push("رقم انتخابي متطابق وميلاد مختلف");
+    if(has.electoralAny) parts.push("نفس الرقم الانتخابي باسم مختلف");
+    groups.push({ reason: parts.join(" + "), ids: g });
   });
   return groups;
 }
