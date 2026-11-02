@@ -474,6 +474,10 @@
   .rep-warn{background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.35); color:#92400e; border-radius:10px; padding:8px 12px; margin-bottom:8px; font-size:13px;}
   .rep-ok{background:rgba(34,197,94,0.10); border:1px solid rgba(34,197,94,0.3); color:#166534; border-radius:10px; padding:8px 12px; font-size:13px;}
   .rep-h{font-size:14px; font-weight:800; margin:16px 0 8px;}
+  .miss-chips{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
+  .miss-chip{background:#fff; color:var(--text); border:1px solid var(--border); border-radius:12px; padding:9px 14px; font-size:13px;}
+  .miss-chip b{font-size:16px; color:#b45309; margin-inline-start:4px;}
+  .miss-chip.active{background:rgba(245,158,11,0.15); border-color:#f59e0b; box-shadow:0 0 0 2px rgba(245,158,11,0.25);}
   @media print{
     @page{size:A4 portrait; margin:12mm;}
     html,body{background:#fff !important; padding:0 !important; margin:0 !important; min-height:0 !important;}
@@ -2931,31 +2935,93 @@ function renderReports(){
 
   const miss = missingDataList();
   html += '<div class="rep-h">نواقص البيانات (غير المُشار عليهم)</div>';
-  html += '<div class="rep-warn" style="background:#fff;">بلا هاتف: <b>' + miss.noPhone + '</b> · بلا رقم انتخابي: <b>' + miss.noElec +
-    '</b> · بلا تاريخ ميلاد: <b>' + miss.noBirth + '</b></div>';
+  html += '<div class="miss-chips">' +
+    '<button type="button" class="miss-chip" data-miss="phone">📞 بلا هاتف <b>' + miss.noPhone + '</b></button>' +
+    '<button type="button" class="miss-chip" data-miss="elec">🪪 بلا رقم انتخابي <b>' + miss.noElec + '</b></button>' +
+    '<button type="button" class="miss-chip" data-miss="birth">🎂 بلا تاريخ ميلاد <b>' + miss.noBirth + '</b></button></div>' +
+    '<div id="missList"></div>';
   html += '<button type="button" class="btn-secondary btn-small" id="btnExportMissing"' + (miss.rows.length ? "" : " disabled") +
     '>📤 تصدير النواقص إلى Excel (' + miss.rows.length + ')</button>';
   $("distDetails").innerHTML = html;
   const bm = $("btnExportMissing");
   if(bm) bm.onclick = exportMissing;
+  document.querySelectorAll(".miss-chip").forEach(b => {
+    b.onclick = () => {
+      window.missSel = (window.missSel === b.dataset.miss) ? null : b.dataset.miss;
+      renderMissList();
+    };
+  });
+  renderMissList();
 
   fillReportSelects(S);
 }
 
 function missingDataList(){
   const rows = [];
+  const ids = { phone: [], elec: [], birth: [] };
   let noPhone = 0, noElec = 0, noBirth = 0;
   Object.keys(allEntries).forEach(id => {
     const e = allEntries[id];
     if(e.flagged) return;
     const m = [];
-    if(!e.phone){ noPhone++; m.push("الهاتف"); }
-    if(!e.electoralNum){ noElec++; m.push("الرقم الانتخابي"); }
-    if(!e.birth){ noBirth++; m.push("تاريخ الميلاد"); }
+    if(!e.phone){ noPhone++; m.push("الهاتف"); ids.phone.push(id); }
+    if(!e.electoralNum){ noElec++; m.push("الرقم الانتخابي"); ids.elec.push(id); }
+    if(!e.birth){ noBirth++; m.push("تاريخ الميلاد"); ids.birth.push(id); }
     if(m.length) rows.push([fullNameOf(e), e.fatherName || "", e.phone || "", e.electoralNum || "", e.birth ? formatDate(e.birth) : "", m.join("، ")]);
   });
-  return { rows, noPhone, noElec, noBirth };
+  return { rows, ids, noPhone, noElec, noBirth };
 }
+
+const MISS_LABELS = { phone: "بلا هاتف", elec: "بلا رقم انتخابي", birth: "بلا تاريخ ميلاد" };
+
+function missIdsSorted(key){
+  const ids = (missingDataList().ids[key] || []).slice();
+  return ids.sort((a, b) => fullNameOf(allEntries[a]).localeCompare(fullNameOf(allEntries[b]), "ar"));
+}
+
+function renderMissList(){
+  const box = $("missList");
+  if(!box) return;
+  const sel = window.missSel;
+  document.querySelectorAll(".miss-chip").forEach(b => b.classList.toggle("active", b.dataset.miss === sel));
+  if(!sel){ box.innerHTML = ""; return; }
+  const ids = missIdsSorted(sel);
+  if(!ids.length){
+    box.innerHTML = '<div class="rep-ok">لا يوجد أي مؤطر ' + MISS_LABELS[sel] + ' ✅</div>';
+    return;
+  }
+  let rows = "";
+  ids.forEach((id, i) => {
+    const e = allEntries[id];
+    rows += '<tr><td>' + (i + 1) + '</td>' +
+      '<td><span class="clickable-name" data-edit="' + escapeHtml(id) + '" title="اضغط للتعديل">' + escapeHtml(fullNameOf(e)) + '</span></td>' +
+      '<td>' + (e.fatherName ? escapeHtml(e.fatherName) : "—") + '</td>' +
+      '<td>' + (e.phone ? escapeHtml(e.phone) : '<span style="color:#c0272d;">—</span>') + '</td>' +
+      '<td>' + (e.electoralNum ? escapeHtml(e.electoralNum) : '<span style="color:#c0272d;">—</span>') + '</td>' +
+      '<td>' + (e.birth ? formatDate(e.birth) : '<span style="color:#c0272d;">—</span>') + '</td>' +
+      '<td>' + escapeHtml(getEntryPosition(e) || "—") + '</td></tr>';
+  });
+  box.innerHTML =
+    '<div class="rep-h" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+    '<span>' + MISS_LABELS[sel] + ' (' + ids.length + ')</span>' +
+    '<button type="button" class="btn-secondary btn-small" id="btnExportMissList">📤 تصدير هذه القائمة</button></div>' +
+    '<div class="table-wrap" style="max-height:420px; overflow-y:auto;"><table class="rep-table" style="min-width:560px;"><thead><tr>' +
+    '<th>#</th><th>الاسم واللقب (اضغط للتعديل)</th><th>اسم الأب</th><th>الهاتف</th><th>الرقم الانتخابي</th><th>الميلاد</th><th>المنصب</th></tr></thead><tbody>' +
+    rows + '</tbody></table></div>';
+  $("btnExportMissList").onclick = () => {
+    if(!xlsxReady()) return;
+    const aoa = [["الاسم واللقب", "اسم الأب", "الهاتف", "الرقم الانتخابي", "تاريخ الميلاد", "المنصب"]].concat(ids.map(id => {
+      const e = allEntries[id];
+      return [fullNameOf(e), e.fatherName || "", e.phone || "", e.electoralNum || "", e.birth ? formatDate(e.birth) : "", getEntryPosition(e) || ""];
+    }));
+    downloadXlsx(aoa, MISS_LABELS[sel].replace(/ /g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".xlsx", [26, 16, 14, 16, 14, 20]);
+  };
+}
+
+document.addEventListener("click", function(ev){
+  const t = ev.target.closest("[data-edit]");
+  if(t && t.closest("#missList")) openEdit(t.dataset.edit);
+});
 
 function exportMissing(){
   if(!xlsxReady()) return;
