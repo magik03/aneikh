@@ -761,7 +761,7 @@
         <span class="badge" id="dupCountBadge">0 حالة</span>
       </h2>
       <p style="color:var(--muted); font-size:13px; margin:-6px 0 16px;">
-        يتم هنا تجميع المؤطرين الذين يتشاركون نفس الاسم واللقب وتاريخ الميلاد. إذا اختلف الرقم الانتخابي أو اسم الأب (عند وجودهما معًا) فلا يُعتبر التشابه قائمًا. حدّد المؤطر المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
+        يتم هنا تجميع المؤطرين بنفس الاسم واللقب في الحالات التالية: (1) نفس تاريخ الميلاد (ويُلغى التشابه إذا اختلف الرقم الانتخابي أو اسم الأب عند وجودهما معًا)، (2) نفس الرقم الانتخابي مع عدم تعارض تاريخ الميلاد، (3) نفس الرقم الانتخابي لكن تاريخ الميلاد مختلف (حالة تحتاج مراجعة، قد تكون خطأ إدخال). حدّد المؤطر المكرر داخل كل مجموعة ثم احذفه مع ذكر السبب.
       </p>
       <div id="duplicatesContent"></div>
     </div>
@@ -1219,12 +1219,34 @@ function sameIdentityCompatible(a, b){
   return true;
 }
 
-function isSimilar(a, b){
+/* سبب التشابه بين مؤطرين بنفس الاسم واللقب:
+   "birth"    : نفس تاريخ الميلاد (دون تعارض في الرقم الانتخابي/اسم الأب)
+   "electoral": نفس الرقم الانتخابي (وتاريخ الميلاد غير متعارض)
+   "conflict" : نفس الرقم الانتخابي لكن تاريخا الميلاد مكتوبان ومختلفان (للمراجعة)
+   null       : لا تشابه */
+function birthsConflict(a, b){
+  return !!(a.birth && b.birth && a.birth !== b.birth);
+}
+function similarReason(a, b){
   const na = normText((a.name || "") + " " + (a.lastName || ""));
   const nb = normText((b.name || "") + " " + (b.lastName || ""));
-  if(!na || na !== nb) return false;
-  if(!a.birth || !b.birth || a.birth !== b.birth) return false;
-  return sameIdentityCompatible(a, b);
+  if(!na || na !== nb) return null;
+  if(a.birth && b.birth && a.birth === b.birth && sameIdentityCompatible(a, b)) return "birth";
+  const ea = normText(a.electoralNum), eb = normText(b.electoralNum);
+  if(ea && eb && ea === eb){
+    return birthsConflict(a, b) ? "conflict" : "electoral";
+  }
+  return null;
+}
+
+function reasonText(r){
+  if(r === "electoral") return "نفس الاسم واللقب والرقم الانتخابي";
+  if(r === "conflict") return "نفس الاسم والرقم الانتخابي لكن تاريخ الميلاد مختلف";
+  return "نفس الاسم واللقب وتاريخ الميلاد";
+}
+
+function isSimilar(a, b){
+  return similarReason(a, b) !== null;
 }
 
 function findDuplicateMatches(candidate, excludeId){
@@ -1241,7 +1263,7 @@ async function confirmIfDuplicates(candidate, excludeId){
   if(matches.length === 0) return true;
   const details = matches.map(m => "• " + m.e.name + " " + (m.e.lastName || "") +
     (m.e.fatherName ? " (الأب: " + m.e.fatherName + ")" : "") +
-    " — نفس الاسم واللقب وتاريخ الميلاد").join("\n");
+    " — " + reasonText(similarReason(candidate, m.e))).join("\n");
   return askConfirm(
     "⚠️ تنبيه: تكرار محتمل",
     "يوجد مؤطر (أو أكثر) مسجّل مسبقاً بنفس البيانات:\n\n" + details + "\n\nهل تريد المتابعة والحفظ رغم ذلك؟",
@@ -2109,6 +2131,7 @@ $("btnSmsStop").addEventListener("click", () => {
      (دون تعارض في الرقم الانتخابي أو اسم الأب). لا يُضاف مرة ثانية،
      وتُملأ حقوله الفارغة فقط. القيم المكتوبة المختلفة تظهر كـ«تعارض»
      وتبقى كما هي. تاريخ الميلاد الناقص أو الحالات الغامضة → «للمراجعة».
+     (الجديد) الهاتف/المستوى/الملاحظات/جديد-غير جديد تُستبدل بالجديد؛ أما الاسم واسم الأب والميلاد والرقم الانتخابي فلا تُستبدل تلقائيًا.
    ============================================================ */
 const EDU_LEVELS = ["بدون مستوى", "إبتدائي", "متوسط", "ثانوي", "ليسانس", "ماستر", "ماجستير"];
 const XLSX_HEADERS = ["الاسم واللقب", "اسم الأب", "تاريخ الميلاد", "الرقم الانتخابي", "الهاتف", "المستوى التعليمي", "جديد / غير جديد", "ملاحظات"];
@@ -2245,10 +2268,12 @@ function sameFieldValue(field, a, b){
 }
 
 function planImport(records){
-  const FIELDS = ["fatherName", "birth", "electoralNum", "phone", "educationLevel", "notes", "experience"];
+  const OVERWRITE = ["phone", "educationLevel", "notes", "experience"];   // تُستبدل بالجديد
+  const IDENTITY = ["fatherName", "birth", "electoralNum"];                // لا تُستبدل تلقائيًا
   const pool = Object.keys(allEntries).map(id => ({ id, data: Object.assign({}, allEntries[id]), isNew: false, changes: {} }));
   const review = [];
-  const conflicts = [];
+  const conflicts = [];          // قيم ستُستبدل
+  const identityConflicts = [];  // قيم هوية مختلفة لم تُغيَّر
   let unchanged = 0;
 
   records.forEach(r => {
@@ -2256,8 +2281,14 @@ function planImport(records){
     const label = (r.name + " " + r.lastName).trim();
     const sameName = pool.filter(p => normArabic((p.data.name || "") + " " + (p.data.lastName || "")) === key);
 
-    // نفس الاسم واللقب + نفس تاريخ الميلاد (دون تعارض في الرقم الانتخابي أو اسم الأب)
-    const cands = sameName.filter(p => r.birth && p.data.birth && r.birth === p.data.birth && sameIdentityCompatible(r, p.data));
+    // مطابقة مؤكدة:
+    //  (أ) نفس الاسم + نفس تاريخ الميلاد (دون تعارض في الرقم الانتخابي أو اسم الأب)
+    //  (ب) نفس الاسم + نفس الرقم الانتخابي بشرط ألا يتعارض تاريخ الميلاد
+    const cands = sameName.filter(p => {
+      if(r.birth && p.data.birth && r.birth === p.data.birth && sameIdentityCompatible(r, p.data)) return true;
+      const ea = normText(r.electoralNum), eb = normText(p.data.electoralNum);
+      return !!(ea && eb && ea === eb && !birthsConflict(r, p.data));
+    });
 
     if(cands.length > 1){
       review.push(label + " — أكثر من مؤطر مطابق");
@@ -2265,6 +2296,15 @@ function planImport(records){
     }
 
     if(cands.length === 0){
+      // نفس الاسم والرقم الانتخابي لكن تاريخ الميلاد مختلف → للمراجعة
+      const elecConflict = sameName.some(p => {
+        const ea = normText(r.electoralNum), eb = normText(p.data.electoralNum);
+        return ea && eb && ea === eb && birthsConflict(r, p.data);
+      });
+      if(elecConflict){
+        review.push(label + " — نفس الرقم الانتخابي لكن تاريخ الميلاد مختلف");
+        return;
+      }
       // نفس الاسم لكن تاريخ الميلاد ناقص في أحد الطرفين → للمراجعة
       const missingBirth = sameName.some(p => (!r.birth || !p.data.birth) && sameIdentityCompatible(r, p.data));
       if(missingBirth){
@@ -2283,22 +2323,30 @@ function planImport(records){
 
     const p = cands[0];
     let changed = false;
-    FIELDS.forEach(f => {
+    IDENTITY.concat(OVERWRITE).forEach(f => {
       if(!r[f]) return;
       if(!p.data[f]){
         p.data[f] = r[f];
         p.changes[f] = r[f];
         changed = true;
       } else if(!sameFieldValue(f, p.data[f], r[f])){
-        conflicts.push({ label, field: f, oldVal: p.data[f], newVal: r[f] });
+        if(IDENTITY.indexOf(f) !== -1){
+          identityConflicts.push({ label, field: f, oldVal: p.data[f], newVal: r[f] });
+        } else {
+          conflicts.push({ label, field: f, oldVal: p.data[f], newVal: r[f] });
+          p.data[f] = r[f];
+          p.changes[f] = r[f];
+          changed = true;
+        }
       }
     });
+    if(p.changes.experience === "new") p.changes.previousRole = null;
     if(!changed) unchanged++;
   });
 
   const added = pool.filter(p => p.isNew).length;
   const updatedList = pool.filter(p => !p.isNew && Object.keys(p.changes).length > 0);
-  return { pool, review, conflicts, added, updated: updatedList.length, updatedList, unchanged };
+  return { pool, review, conflicts, identityConflicts, added, updated: updatedList.length, updatedList, unchanged };
 }
 
 function buildImportMessage(plan){
@@ -2306,7 +2354,7 @@ function buildImportMessage(plan){
   lines.push("✅ مؤطرون جدد سيُضافون: " + plan.added);
   lines.push("🔄 مؤطرون مسجّلون سيُحيَّنون: " + plan.updated);
   plan.updatedList.slice(0, 10).forEach(p => {
-    const fields = Object.keys(p.changes).map(f => "+ " + FIELD_LABELS[f]).join("، ");
+    const fields = Object.keys(p.changes).filter(f => FIELD_LABELS[f]).map(f => "+ " + FIELD_LABELS[f]).join("، ");
     lines.push("   • " + ((p.data.name || "") + " " + (p.data.lastName || "")).trim() + ": " + fields);
   });
   if(plan.updatedList.length > 10) lines.push("   … و" + (plan.updatedList.length - 10) + " آخرين");
@@ -2314,12 +2362,21 @@ function buildImportMessage(plan){
 
   if(plan.conflicts.length){
     lines.push("");
-    lines.push("⚠️ تعارض (تبقى القيمة الحالية دون تغيير): " + plan.conflicts.length);
+    lines.push("♻️ قيم موجودة سيتم استبدالها بالجديدة: " + plan.conflicts.length);
     plan.conflicts.slice(0, 10).forEach(c => {
       lines.push("   • " + c.label + " — " + FIELD_LABELS[c.field] +
-        ": الحالية " + importValueLabel(c.field, c.oldVal) + " | الجديدة " + importValueLabel(c.field, c.newVal));
+        ": من " + importValueLabel(c.field, c.oldVal) + " إلى " + importValueLabel(c.field, c.newVal));
     });
     if(plan.conflicts.length > 10) lines.push("   … و" + (plan.conflicts.length - 10) + " آخرين");
+  }
+  if(plan.identityConflicts.length){
+    lines.push("");
+    lines.push("🛑 بيانات هوية مختلفة (لن تُغيَّر، راجعها يدويًا): " + plan.identityConflicts.length);
+    plan.identityConflicts.slice(0, 10).forEach(c => {
+      lines.push("   • " + c.label + " — " + FIELD_LABELS[c.field] +
+        ": الحالية " + importValueLabel(c.field, c.oldVal) + " | في الملف " + importValueLabel(c.field, c.newVal));
+    });
+    if(plan.identityConflicts.length > 10) lines.push("   … و" + (plan.identityConflicts.length - 10) + " آخرين");
   }
   if(plan.review.length){
     lines.push("");
@@ -2399,7 +2456,7 @@ $("fileImportXlsx").addEventListener("change", async function(){
     const plan = planImport(parsed.records);
 
     if(plan.added === 0 && plan.updated === 0){
-      if(plan.conflicts.length === 0 && plan.review.length === 0){
+      if(plan.conflicts.length === 0 && plan.review.length === 0 && plan.identityConflicts.length === 0){
         showToast("لا يوجد ما يُضاف أو يُحيَّن: كل المؤطرين مسجّلون ومعلوماتهم كاملة.", "info");
         return;
       }
@@ -2470,9 +2527,8 @@ function computeDuplicateGroups(){
   Object.keys(allEntries).forEach(id => {
     const e = allEntries[id];
     const nameKey = normText((e.name || "") + " " + (e.lastName || ""));
-    if(!nameKey || !e.birth) return;
-    const key = nameKey + "|" + e.birth;
-    (buckets[key] = buckets[key] || []).push(id);
+    if(!nameKey) return;
+    (buckets[nameKey] = buckets[nameKey] || []).push(id);
   });
 
   const groups = [];
@@ -2482,17 +2538,29 @@ function computeDuplicateGroups(){
     const parent = {};
     list.forEach(id => parent[id] = id);
     const find = (x) => { while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const reasons = {};
     for(let i = 0; i < list.length; i++){
       for(let j = i + 1; j < list.length; j++){
-        if(sameIdentityCompatible(allEntries[list[i]], allEntries[list[j]])){
+        const why = similarReason(allEntries[list[i]], allEntries[list[j]]);
+        if(why){
           parent[find(list[i])] = find(list[j]);
+          (reasons[list[i]] = reasons[list[i]] || {})[why] = true;
+          (reasons[list[j]] = reasons[list[j]] || {})[why] = true;
         }
       }
     }
     const clusters = {};
     list.forEach(id => { const r = find(id); (clusters[r] = clusters[r] || []).push(id); });
     Object.keys(clusters).forEach(r => {
-      if(clusters[r].length > 1) groups.push({ reason: "نفس الاسم واللقب وتاريخ الميلاد", ids: clusters[r] });
+      const ids = clusters[r];
+      if(ids.length < 2) return;
+      const has = {};
+      ids.forEach(id => Object.keys(reasons[id] || {}).forEach(x => has[x] = true));
+      const parts = [];
+      if(has.birth) parts.push("نفس الاسم وتاريخ الميلاد");
+      if(has.electoral) parts.push("نفس الاسم والرقم الانتخابي");
+      if(has.conflict) parts.push("رقم انتخابي متطابق وميلاد مختلف");
+      groups.push({ reason: parts.join(" + "), ids });
     });
   });
   return groups;
