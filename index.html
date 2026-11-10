@@ -10,6 +10,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <!-- مكتبة قراءة/كتابة ملفات Excel -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -3363,7 +3364,10 @@ css.textContent = [
 ".dz-det{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}",
 ".dz-det div{background:#f3f8f5;border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:13px;}",
 ".dz-det span{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}",
-".dz-det .full{grid-column:span 2;}"
+".dz-det .full{grid-column:span 2;}",
+".dz-newbox{border:1px dashed var(--accent);border-radius:14px;padding:14px;background:#f3faf6;}",
+".dz-nform{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;}",
+".dz-nform .full{grid-column:span 2;}"
 ].join("\n");
 document.head.appendChild(css);
 
@@ -3388,12 +3392,90 @@ pickM.style.zIndex = "45";
 pickM.innerHTML =
  '<div class="modal" style="max-width:680px;">' +
  '<h3>تعيين مؤطر</h3><p id="dzPickTitle" style="margin-bottom:12px;font-weight:700;color:var(--text);"></p>' +
- '<div class="field" style="margin-bottom:10px;"><input type="text" id="dzPickSearch" placeholder="بحث بالاسم، اسم الأب، الرقم الانتخابي، الهاتف أو تاريخ الميلاد..."></div>' +
+ '<div id="dzPickMain">' +
+ '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"><div class="field" style="flex:1;min-width:200px;"><input type="text" id="dzPickSearch" placeholder="بحث بالاسم، اسم الأب، الرقم الانتخابي، الهاتف أو تاريخ الميلاد..."></div>' +
+ '<button type="button" class="btn-blue" id="dzNewBtn">➕ مؤطر غير موجود؟ أضِفه الآن</button></div>' +
  '<div class="dz-chips" id="dzPickChips"></div>' +
- '<div id="dzPickList"></div>' +
+ '<div id="dzPickList"></div></div>' +
+ '<div id="dzNewForm" style="display:none;">' +
+ '<div class="dz-newbox"><b>إضافة مؤطر جديد وتعيينه مباشرة في هذا المنصب</b>' +
+ '<div class="dz-nform">' +
+ '<div class="field full"><label>الاسم واللقب *</label><input type="text" id="dzNName" placeholder="مثال: أحمد بن علي"></div>' +
+ '<div class="field"><label>اسم الأب</label><input type="text" id="dzNFather"></div>' +
+ '<div class="field"><label>تاريخ الميلاد</label><input type="text" id="dzNBirth" inputmode="numeric" maxlength="10" placeholder="02/02/2006"></div>' +
+ '<div class="field"><label>الرقم الانتخابي</label><input type="text" id="dzNElect" inputmode="numeric"></div>' +
+ '<div class="field"><label>الهاتف</label><input type="tel" id="dzNPhone"></div>' +
+ '<div class="field"><label>المستوى التعليمي</label><select id="dzNEdu"><option value="">اختر</option><option>بدون مستوى</option><option>إبتدائي</option><option>متوسط</option><option>ثانوي</option><option>ليسانس</option><option>ماستر</option><option>ماجستير</option></select></div>' +
+ '<div class="field"><label>جديد في الانتخابات؟</label><select id="dzNExp"><option value="">اختر</option><option value="new">🔵 جديد</option><option value="previous">غير جديد</option></select></div>' +
+ '<div class="field full" id="dzNPrevWrap" style="display:none;"><label>وظيفته السابقة</label><input type="text" id="dzNPrev" placeholder="رئيس مكتب، مساعد..."></div>' +
+ '</div>' +
+ '<div class="actions"><button type="button" class="btn-primary" id="dzNSave">💾 حفظ وتعيين</button><button type="button" class="btn-secondary" id="dzNCancel">رجوع للقائمة</button></div>' +
+ '</div></div>' +
  '<div class="actions" style="margin-top:8px;"><button type="button" class="btn-secondary" id="dzPickClose">إغلاق</button></div>' +
  '</div>';
 document.body.appendChild(pickM);
+
+/* ---------- دخول الأدمن (مطلوب للتوزيع حسب قواعد Firestore) ---------- */
+var ADMIN_EMAIL = "admin@moatir.app";
+var fbAuth = firebase.auth();
+var persistP = fbAuth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(function(){});
+var authResolve = null;
+
+var authM = document.createElement("div");
+authM.className = "modal-overlay";
+authM.id = "dzAuth";
+authM.style.zIndex = "80";
+authM.innerHTML =
+ '<div class="modal" style="max-width:380px;"><h3>🔐 الكود السري</h3>' +
+ '<p style="margin-bottom:12px;">التوزيع يتطلب كود الأدمن. يُطلب مرة واحدة في هذه الجلسة.</p>' +
+ '<div class="field"><input type="password" id="dzAuthCode" placeholder="الكود السري" autocomplete="current-password"></div>' +
+ '<div id="dzAuthErr" style="color:#c0272d;font-size:12.5px;min-height:18px;margin-top:6px;"></div>' +
+ '<div class="actions"><button type="button" class="btn-primary" id="dzAuthOk">دخول</button>' +
+ '<button type="button" class="btn-secondary" id="dzAuthNo">إلغاء</button></div></div>';
+document.body.appendChild(authM);
+
+function isAdmin(){
+  var u = fbAuth.currentUser;
+  return !!(u && u.email && u.email.toLowerCase() === ADMIN_EMAIL);
+}
+function ensureAdmin(){
+  return new Promise(function(resolve){
+    var unsub = fbAuth.onAuthStateChanged(function(){
+      unsub();
+      if(isAdmin()){ resolve(true); return; }
+      authResolve = resolve;
+      q("dzAuthCode").value = "";
+      q("dzAuthErr").textContent = "";
+      authM.classList.add("show");
+      setTimeout(function(){ q("dzAuthCode").focus(); }, 50);
+    });
+  });
+}
+function finishAuth(ok){
+  authM.classList.remove("show");
+  var r = authResolve; authResolve = null;
+  if(r) r(ok);
+}
+async function doAuth(){
+  var code = q("dzAuthCode").value;
+  if(!code){ q("dzAuthErr").textContent = "أدخل الكود السري."; return; }
+  q("dzAuthOk").disabled = true;
+  try{
+    await persistP;
+    await fbAuth.signInWithEmailAndPassword(ADMIN_EMAIL, code);
+    finishAuth(true);
+  }catch(err){
+    var c = err.code || "";
+    q("dzAuthErr").textContent = (c.indexOf("wrong-password") > -1 || c.indexOf("invalid-credential") > -1 || c.indexOf("invalid-login") > -1 || c.indexOf("user-not-found") > -1)
+      ? "الكود غير صحيح." : (c === "auth/too-many-requests" ? "محاولات كثيرة، انتظر قليلًا." : "تعذّر الدخول: " + err.message);
+    q("dzAuthCode").value = "";
+  }finally{
+    q("dzAuthOk").disabled = false;
+  }
+}
+q("dzAuthOk").addEventListener("click", doAuth);
+q("dzAuthNo").addEventListener("click", function(){ finishAuth(false); });
+q("dzAuthCode").addEventListener("keydown", function(e){ if(e.key === "Enter") doAuth(); });
 
 var viewM = document.createElement("div");
 viewM.className = "modal-overlay";
@@ -3529,8 +3611,8 @@ q("dzContent").addEventListener("click", function(ev){
   if(a === "open"){ cur = t.dataset.center; render(); window.scrollTo({ top: 0, behavior: "smooth" }); }
   else if(a === "back"){ cur = null; render(); }
   else if(a === "type"){ typeView[t.dataset.key] = t.dataset.type; render(); }
-  else if(a === "assign"){ openPick(ctxFrom(t.dataset)); }
-  else if(a === "remove"){ unassign(t.dataset.id); }
+  else if(a === "assign"){ var cx = ctxFrom(t.dataset); ensureAdmin().then(function(ok){ if(ok) openPick(cx); }); }
+  else if(a === "remove"){ var rid = t.dataset.id; ensureAdmin().then(function(ok){ if(ok) unassign(rid); }); }
   else if(a === "view"){ openView(t.dataset.id); }
 });
 
@@ -3567,6 +3649,7 @@ function openPick(c){
   pick = { ctx: c, filter: "free" };
   q("dzPickTitle").textContent = "المنصب: " + ctxTitle(c);
   q("dzPickSearch").value = "";
+  hideNewForm();
   pickM.classList.add("show");
   renderPick();
 }
@@ -3608,7 +3691,7 @@ function renderPick(){
   });
 
   if(!ids.length){
-    q("dzPickList").innerHTML = '<div class="empty-state" style="padding:24px;">لا يوجد مؤطرون مطابقون</div>';
+    q("dzPickList").innerHTML = '<div class="empty-state" style="padding:24px;">لا يوجد مؤطرون مطابقون<br><br><button type="button" class="btn-blue" id="dzNewBtn2">➕ أضِف «' + esc(q("dzPickSearch").value.trim() || "مؤطر جديد") + '» الآن</button></div>';
     return;
   }
   q("dzPickList").innerHTML = ids.slice(0, 80).map(function(id){
@@ -3636,8 +3719,87 @@ q("dzPickList").addEventListener("click", function(ev){
   if(t) assign(t.dataset.pick);
 });
 
+/* ---------- إضافة مؤطر جديد مباشرة من نافذة الاختيار ---------- */
+function showNewForm(prefill){
+  q("dzPickMain").style.display = "none";
+  q("dzNewForm").style.display = "block";
+  ["dzNFather","dzNBirth","dzNElect","dzNPhone","dzNPrev"].forEach(function(i){ q(i).value = ""; });
+  q("dzNEdu").value = ""; q("dzNExp").value = ""; q("dzNPrevWrap").style.display = "none";
+  q("dzNName").value = prefill || "";
+  setTimeout(function(){ q("dzNName").focus(); }, 50);
+}
+function hideNewForm(){
+  q("dzNewForm").style.display = "none";
+  q("dzPickMain").style.display = "block";
+}
+q("dzNewBtn").addEventListener("click", function(){ showNewForm(q("dzPickSearch").value.trim()); });
+q("dzPickList").addEventListener("click", function(ev){
+  if(ev.target.closest("#dzNewBtn2")) showNewForm(q("dzPickSearch").value.trim());
+});
+q("dzNCancel").addEventListener("click", hideNewForm);
+q("dzNExp").addEventListener("change", function(){
+  q("dzNPrevWrap").style.display = this.value === "previous" ? "flex" : "none";
+});
+if(typeof attachBirthAutoFormat === "function") attachBirthAutoFormat("dzNBirth");
+
+var savingNew = false;
+q("dzNSave").addEventListener("click", async function(){
+  if(!pick || savingNew) return;
+  var full = q("dzNName").value.trim();
+  if(!full){ showToast("اكتب الاسم واللقب أولًا", "err"); return; }
+  var parts = full.split(/\s+/).filter(Boolean);
+  var name = parts[0], lastName = parts.slice(1).join(" ");
+  var birthTxt = q("dzNBirth").value.trim();
+  var birth = birthTxt ? birthDisplayToISO(birthTxt) : null;
+  if(birthTxt && !birth){ showToast("تاريخ الميلاد غير صحيح (مثال: 02/02/2006)", "err"); return; }
+  var father = q("dzNFather").value.trim();
+  var electoral = q("dzNElect").value.trim();
+  var exp = q("dzNExp").value || null;
+  var c = pick.ctx;
+  savingNew = true;
+  q("dzNSave").disabled = true;
+  try{
+    if(!(await ensureAdmin())) return;
+    if(!(await confirmIfDuplicates({ name: name, lastName: lastName, birth: birth, electoralNum: electoral, fatherName: father }, null))) return;
+    var oldId = seatMap()[seatKey(c)];
+    if(oldId){
+      var ok = await askConfirm("استبدال", "هذا المنصب يشغله «" + fullName(allEntries[oldId]) + "».\nسيُلغى توزيعه ويحلّ محلّه «" + full + "». متابعة؟", "استبدال");
+      if(!ok) return;
+    }
+    var now = Date.now();
+    var entry = {
+      name: name, lastName: lastName,
+      fatherName: father || null, birth: birth || null,
+      electoralNum: electoral || null, phone: q("dzNPhone").value.trim() || null,
+      educationLevel: q("dzNEdu").value || null, notes: null,
+      experience: exp, previousRole: exp === "previous" ? (q("dzNPrev").value.trim() || null) : null,
+      assignLevel: c.lvl, center: c.center,
+      centerPosition: c.lvl === "center" ? c.pos : null,
+      officeNumber: c.lvl === "office" ? String(c.num) : null,
+      officeType: c.lvl === "office" ? c.type : null,
+      officePosition: c.lvl === "office" ? c.pos : null,
+      flagged: false, issueType: null, issueReason: null,
+      deleted: false, deletedAt: null, deleteReason: null, deletedByClient: null,
+      clientId: CLIENT_ID, createdAt: now, updatedAt: now
+    };
+    var batch = db.batch();
+    batch.set(collectionRef.doc(), entry);
+    if(oldId) batch.update(collectionRef.doc(oldId), Object.assign(clearFields(), { updatedAt: now }));
+    await batch.commit();
+    hideNewForm();
+    closePick();
+    showToast("أُضيف «" + full + "» وعُيّن في المنصب ✅", "ok");
+  }catch(err){
+    showToast("خطأ أثناء الحفظ: " + err.message, "err");
+  }finally{
+    savingNew = false;
+    q("dzNSave").disabled = false;
+  }
+});
+
 async function assign(id){
   if(!pick) return;
+  if(!(await ensureAdmin())) return;
   var c = pick.ctx, e = allEntries[id];
   if(!e) return;
   var map = seatMap();
@@ -3664,7 +3826,7 @@ async function assign(id){
     closePick();
     showToast("تم تعيين «" + fullName(e) + "» ✅", "ok");
   }catch(err){
-    showToast("خطأ أثناء التعيين: " + err.message, "err");
+    showToast("خطأ أثناء التعيين: " + (String(err.code||"").indexOf("permission") > -1 ? "لا توجد صلاحية، أعد تحميل الصفحة وأدخل الكود السري" : err.message), "err");
   }
 }
 
@@ -3703,7 +3865,7 @@ function renderView(){
   q("dzVClose").onclick = closeView;
   q("dzVEdit").onclick = function(){ var i = viewId; closeView(); openEdit(i); };
   var r = q("dzVRemove");
-  if(r) r.onclick = function(){ var i = viewId; closeView(); unassign(i); };
+  if(r) r.onclick = function(){ var i = viewId; ensureAdmin().then(function(ok){ if(ok){ closeView(); unassign(i); } }); };
 }
 
 /* ========== التحديث اللحظي مع Firestore ========== */
