@@ -3603,6 +3603,7 @@ function seatRow(c, map){
     (e.experience === "new" ? ' <span class="badge-new">🔵 جديد</span>' : '') +
     (e.flagged ? ' <span class="dz-sm" style="color:#c0272d;">🚩</span>' : '') +
     '<div class="dz-sm">' + (sub.join(" · ") || "—") + '</div></div>' +
+    '<button type="button" class="dz-ch" data-act="flag" data-id="' + esc(id) + '" title="وضع إشارة">🚩</button>' +
     '<button type="button" class="dz-ch" data-act="assign" ' + ctxAttrs(c) + ' title="تغيير">⇄</button>' +
     '<button type="button" class="dz-x" data-act="remove" data-id="' + esc(id) + '" title="إزالة من المنصب">✕</button></div>';
 }
@@ -3618,6 +3619,7 @@ q("dzContent").addEventListener("click", function(ev){
   else if(a === "assign"){ var cx = ctxFrom(t.dataset); ensureAdmin().then(function(ok){ if(ok) openPick(cx); }); }
   else if(a === "remove"){ var rid = t.dataset.id; ensureAdmin().then(function(ok){ if(ok) unassign(rid); }); }
   else if(a === "view"){ openView(t.dataset.id); }
+  else if(a === "flag"){ openFlag(t.dataset.id); }
 });
 
 btn.addEventListener("click", function(){
@@ -3714,11 +3716,15 @@ function renderPick(){
     return '<div class="dz-pcard' + (assigned ? " assigned" : "") + '"><div class="info">' +
       '<div class="nm">' + esc(fullName(e)) + (e.experience === "new" ? ' <span class="badge-new">🔵 جديد</span>' : '') + '</div>' +
       tags.join("") + line2 + '</div>' +
-      '<button type="button" class="btn-primary btn-small" data-pick="' + esc(id) + '">' + (assigned ? "نقل إلى هنا" : "تعيين") + '</button></div>';
+      '<div style="display:flex;flex-direction:column;gap:6px;">' +
+      '<button type="button" class="btn-primary btn-small" data-pick="' + esc(id) + '">' + (assigned ? "نقل إلى هنا" : "تعيين") + '</button>' +
+      '<button type="button" class="dz-x" data-flagid="' + esc(id) + '">🚩 إشارة</button></div></div>';
   }).join("") + (ids.length > 80 ? '<div class="dz-sm" style="text-align:center;">يظهر أول 80 نتيجة، استعمل البحث لتضييق القائمة.</div>' : "");
 }
 
 q("dzPickList").addEventListener("click", function(ev){
+  var f = ev.target.closest("[data-flagid]");
+  if(f){ openFlag(f.dataset.flagid); return; }
   var t = ev.target.closest("[data-pick]");
   if(t) assign(t.dataset.pick);
 });
@@ -3861,12 +3867,15 @@ function renderView(){
     det("جديد / غير جديد", exp) +
     det("التوزيع الحالي", describe(e), true) +
     det("ملاحظات", e.notes, true) +
+    (e.flagged ? det("🚩 الإشارة", e.issueType || "مشكلة", true) : "") +
     '</div>' +
     '<div class="actions" style="margin-top:0;">' +
     '<button type="button" class="btn-primary" id="dzVEdit">✏️ تعديل البيانات</button>' +
+    '<button type="button" class="btn-secondary" id="dzVFlag">' + (e.flagged ? "🚩 تعديل الإشارة" : "🚩 وضع إشارة") + '</button>' +
     ((e.assignLevel && e.center) ? '<button type="button" class="btn-danger" id="dzVRemove">✕ إزالة من المنصب</button>' : '') +
     '<button type="button" class="btn-secondary" id="dzVClose">إغلاق</button></div>';
   q("dzVClose").onclick = closeView;
+  q("dzVFlag").onclick = function(){ openFlag(viewId); };
   q("dzVEdit").onclick = function(){ var i = viewId; closeView(); openEdit(i); };
   var r = q("dzVRemove");
   if(r) r.onclick = function(){ var i = viewId; ensureAdmin().then(function(ok){ if(ok){ closeView(); unassign(i); } }); };
