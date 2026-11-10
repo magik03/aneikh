@@ -3359,6 +3359,7 @@ css.textContent = [
 ".dz-add{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;padding:5px 12px;font-size:12px;}",
 ".dz-pcard{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:9px;background:#fff;display:flex;gap:10px;align-items:flex-start;}",
 ".dz-pcard.assigned{opacity:.75;background:#f6f6f6;}",
+".dz-pcard.flagged{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.45);}",
 ".dz-pcard .info{flex:1;min-width:0;font-size:12.5px;color:var(--muted);line-height:1.9;}",
 ".dz-pcard .nm{font-size:15px;font-weight:800;color:var(--text);}",
 ".dz-pcard .tg{display:inline-block;margin-inline-end:10px;white-space:nowrap;}",
@@ -3601,7 +3602,7 @@ function seatRow(c, map){
   return '<div class="dz-seat filled' + (e.flagged ? " flag" : "") + '">' + posBadge(c.pos) +
     '<div class="dz-who"><button type="button" class="dz-name" data-act="view" data-id="' + esc(id) + '">' + esc(fullName(e)) + '</button>' +
     (e.experience === "new" ? ' <span class="badge-new">🔵 جديد</span>' : '') +
-    (e.flagged ? ' <span class="dz-sm" style="color:#c0272d;">🚩</span>' : '') +
+    (e.flagged ? ' <span class="dz-sm" style="color:#c0272d;font-weight:700;">🚩 ' + esc(e.issueType || "مشكلة") + '</span>' : '') +
     '<div class="dz-sm">' + (sub.join(" · ") || "—") + '</div></div>' +
     '<button type="button" class="dz-ch" data-act="flag" data-id="' + esc(id) + '" title="وضع إشارة">🚩</button>' +
     '<button type="button" class="dz-ch" data-act="assign" ' + ctxAttrs(c) + ' title="تغيير">⇄</button>' +
@@ -3673,7 +3674,7 @@ q("dzPickChips").addEventListener("click", function(ev){
 
 function renderPick(){
   if(!pick) return;
-  var chips = [["free", "غير الموزَّعين"], ["new", "🔵 الجدد"], ["prev", "سبق لهم العمل"], ["all", "الكل (للنقل)"]];
+  var chips = [["free", "غير الموزَّعين"], ["new", "🔵 الجدد"], ["prev", "سبق لهم العمل"], ["flag", "🚩 عليهم إشارة"], ["all", "الكل (للنقل)"]];
   q("dzPickChips").innerHTML = chips.map(function(c){
     return '<button type="button" class="dz-chip ' + (pick.filter === c[0] ? "on" : "") + '" data-f="' + c[0] + '">' + c[1] + '</button>';
   }).join("");
@@ -3681,11 +3682,11 @@ function renderPick(){
   var s = q("dzPickSearch").value.trim().toLowerCase();
   var ids = Object.keys(allEntries).filter(function(id){
     var e = allEntries[id];
-    if(e.flagged) return false;
     var assigned = !!(e.assignLevel && e.center);
     if(pick.filter === "free" && assigned) return false;
     if(pick.filter === "new" && (e.experience !== "new" || assigned)) return false;
     if(pick.filter === "prev" && (e.experience !== "previous" || assigned)) return false;
+    if(pick.filter === "flag" && (!e.flagged || assigned)) return false;
     if(s){
       var hay = [fullName(e), e.fatherName || "", e.electoralNum || "", e.phone || "",
         e.birth ? formatDate(e.birth) : "", e.birth || ""].join(" ").toLowerCase();
@@ -3712,8 +3713,9 @@ function renderPick(){
     var line2 = "";
     if(e.experience === "previous") line2 = '<div>غير جديد' + (e.previousRole ? " — وظيفته سابقًا: <b>" + esc(e.previousRole) + "</b>" : "") + '</div>';
     if(e.notes) line2 += '<div>📝 ' + esc(e.notes) + '</div>';
+    if(e.flagged) line2 += '<div style="color:#c0272d;font-weight:700;">🚩 ' + esc(e.issueType || "مشكلة") + '</div>';
     if(assigned) line2 += '<div style="color:#b45309;font-weight:700;">موزَّع حاليًا: ' + esc(describe(e)) + '</div>';
-    return '<div class="dz-pcard' + (assigned ? " assigned" : "") + '"><div class="info">' +
+    return '<div class="dz-pcard' + (assigned ? " assigned" : "") + (e.flagged ? " flagged" : "") + '"><div class="info">' +
       '<div class="nm">' + esc(fullName(e)) + (e.experience === "new" ? ' <span class="badge-new">🔵 جديد</span>' : '') + '</div>' +
       tags.join("") + line2 + '</div>' +
       '<div style="display:flex;flex-direction:column;gap:6px;">' +
