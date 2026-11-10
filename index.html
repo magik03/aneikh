@@ -971,15 +971,17 @@
       <label>سبب الإشارة <span class="req">*</span></label>
       <select id="flagReasonSelect">
         <option value="">اختر السبب</option>
-        <option value="مترشح في الانتخابات">مترشح في الانتخابات</option>
+        <option value="مترشح في الانتخابات">المؤطر مترشح في الانتخابات</option>
+        <option value="أحد أقاربه مترشح في الانتخابات">أحد أقاربه مترشح في الانتخابات</option>
+        <option value="رفض التأطير">رفض التأطير</option>
         <option value="أخلّ بأخلاقيات المهنة في انتخابات سابقة">أخلّ بأخلاقيات المهنة في انتخابات سابقة</option>
         <option value="تخلّف عن الانتخابات السابقة">تخلّف عن الانتخابات السابقة</option>
         <option value="أخرى">أخرى</option>
       </select>
     </div>
     <div class="field" id="flagOtherWrap" style="margin-bottom:12px; display:none;">
-      <label>اذكر السبب <span class="req">*</span></label>
-      <input type="text" id="flagIssueType" placeholder="اكتب سبب الإشارة...">
+      <label>اذكر السبب / الملاحظة <span class="req">*</span></label>
+      <input type="text" id="flagIssueType" placeholder="اكتب الملاحظة...">
     </div>
     <div class="actions">
       <button class="btn-danger" id="btnSaveFlag">حفظ الإشارة</button>
@@ -1910,6 +1912,8 @@ $("btnSaveEdit").addEventListener("click", async () => {
 /* ---------------- الإشارة ---------------- */
 const FLAG_PRESETS = [
   "مترشح في الانتخابات",
+  "أحد أقاربه مترشح في الانتخابات",
+  "رفض التأطير",
   "أخلّ بأخلاقيات المهنة في انتخابات سابقة",
   "تخلّف عن الانتخابات السابقة"
 ];
